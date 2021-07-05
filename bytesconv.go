@@ -170,3 +170,25 @@ func writeInt(w *bufio.Writer, n int) error {
 	intBufPool.Put(v)
 	return err
 }
+
+const toLower = 'a' - 'A'
+
+func uppercaseByte(p *byte) {
+	c := *p
+	if c >= 'a' && c <= 'z' {
+		*p = c - toLower
+	}
+}
+
+func lowercaseByte(p *byte) {
+	c := *p
+	if c >= 'A' && c <= 'Z' {
+		*p = c + toLower
+	}
+}
+
+func lowercaseBytes(b []byte) {
+	for i, n := 0, len(b); i < n; i++ {
+		lowercaseByte(&b[i])
+	}
+}
