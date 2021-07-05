@@ -73,6 +73,10 @@ func (a *Args) Peek(key string) []byte {
     return nil
 }
 
+func (a *Args) Has(key string) bool {
+    return a.Peek(key) != nil
+}
+
 // Get query string
 func (a *Args) String() string {
     a.buf = a.AppendBytes(a.buf[:0])

@@ -97,3 +97,41 @@ func testArgsParse(t *testing.T, a *Args, s string, expectedLen int, expectedArg
         }
     }
 }
+
+func TestArgsHas(t *testing.T) {
+    var a Args
+
+    // single arg
+    testArgsHas(t, &a, "foo", "foo")
+    testArgsHasNot(t, &a, "foo", "bar", "baz", "")
+
+    // multi args without values
+    testArgsHas(t, &a, "foo&bar", "foo", "bar")
+    testArgsHasNot(t, &a, "foo&bar", "", "aaaa")
+
+    // multi args
+    testArgsHas(t, &a, "b=xx&=aaa&c=", "", "c", "b")
+    testArgsHasNot(t, &a, "b=xx&=aaa&c=", "xx", "aaa", "foo")
+
+    // encoded args
+    testArgsHas(t, &a, "a+b=c+d%20%20e", "a b")
+    testArgsHasNot(t, &a, "a+b=c+d", "a+b", "c+d")
+}
+
+func testArgsHas(t *testing.T, a *Args, s string, expectedKeys ...string) {
+    a.Parse(s)
+    for _, key := range expectedKeys {
+        if !a.Has(key) {
+            t.Fatalf("Missing key %q in %q", key, s)
+        }
+    }
+}
+
+func testArgsHasNot(t *testing.T, a *Args, s string, unexpectedKeys ...string) {
+    a.Parse(s)
+    for _, key := range unexpectedKeys {
+        if a.Has(key) {
+            t.Fatalf("Unexpected key %q in %q", key, s)
+        }
+    }
+}
