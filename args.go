@@ -18,6 +18,10 @@ func (a *Args) Clear() {
     a.args = a.args[:0]
 }
 
+func (a *Args) Len() int {
+    return len(a.args)
+}
+
 func (a *Args) Set(key, value string) {
     a.buf = CopyBytesStr(a.buf, value)
     a.SetBytes(key, a.buf)
@@ -47,6 +51,26 @@ func (a *Args) SetBytes(key string, value []byte) {
     kv.key = CopyBytesStr(kv.key, key)
     kv.value = append(kv.value, value...)
     a.args = append(a.args, kv)
+}
+
+// Warning: each call allocates memory for returned string.
+func (a *Args) Get(key string) string {
+    return string(a.Peek(key))
+}
+
+func (a *Args) GetBytes(dst []byte, key string) []byte {
+    value := a.Peek(key)
+    return append(dst[:0], value...)
+}
+
+func (a *Args) Peek(key string) []byte {
+    for i, n := 0, len(a.args); i < n; i++ {
+        kv := &a.args[i]
+        if EqualBytesStr(kv.key, key) {
+            return kv.value
+        }
+    }
+    return nil
 }
 
 // Get query string
