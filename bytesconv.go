@@ -1,6 +1,7 @@
 package fasthttp
 
 import (
+	"bufio"
 	"fmt"
 	"math"
 )
@@ -14,6 +15,19 @@ var (
 		case 0xffffffffffffffff:
 			// 64 bit
 			return 18
+		default:
+			panic("Unsupported architecture :)")
+		}
+	}()
+
+	maxHexIntChars = func() int {
+		switch ^uint(0) {
+		case 0xffffffff:
+			// 32 bit
+			return 6
+		case 0xffffffffffffffff:
+			// 64 bit
+			return 15
 		default:
 			panic("Unsupported architecture :)")
 		}
@@ -97,4 +111,34 @@ func parseUfloat(buf []byte) (float64, error) {
 		}
 	}
 	return float64(v) * offset, nil
+}
+
+func readHexInt(r *bufio.Reader) (int, error) {
+	n := 0
+	i := 0
+	var k byte
+	for {
+		c, err := r.ReadByte()
+		if err != nil {
+			return -1, err
+		}
+		if c >= '0' && c <= '9' {
+			k = c - '0'
+		} else if c >= 'a' && c <= 'f' {
+			k = 10 + c - 'a'
+		} else if c >= 'A' && c <= 'F' {
+			k = 10 + c - 'A'
+		} else {
+			if i == 0 {
+				return -1, fmt.Errorf("cannot read hex num from empty string")
+			}
+			r.UnreadByte()
+			return n, nil
+		}
+		if i >= maxHexIntChars {
+			return -1, fmt.Errorf("cannot read hex num with more than %d digits", maxHexIntChars)
+		}
+		n = n*16 + int(k)
+		i++
+	}
 }
