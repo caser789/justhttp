@@ -2,6 +2,7 @@ package fasthttp
 
 import (
 	"bytes"
+	"errors"
 )
 
 type Args struct {
@@ -145,6 +146,40 @@ func (a *Args) ParseBytes(b []byte) {
 		}
 		a.args = append(a.args, kv)
 	}
+}
+
+var errNoArgValue = errors.New("No value for the given key")
+
+func (a *Args) GetUint(key string) (int, error) {
+	value := a.Peek(key)
+	if len(value) == 0 {
+		return -1, errNoArgValue
+	}
+	return parseUint(value)
+}
+
+func (a *Args) GetUintOrZero(key string) int {
+	n, err := a.GetUint(key)
+	if err != nil {
+		n = 0
+	}
+	return n
+}
+
+func (a *Args) GetUfloat(key string) (float64, error) {
+	value := a.Peek(key)
+	if len(value) == 0 {
+		return -1, errNoArgValue
+	}
+	return parseUfloat(value)
+}
+
+func (a *Args) GetUfloatOrZero(key string) float64 {
+	f, err := a.GetUfloat(key)
+	if err != nil {
+		f = 0
+	}
+	return f
 }
 
 //////////////////////////////////////////////////
