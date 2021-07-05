@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"math"
+	"sync"
 )
 
 var (
@@ -141,4 +142,31 @@ func readHexInt(r *bufio.Reader) (int, error) {
 		n = n*16 + int(k)
 		i++
 	}
+}
+
+var intBufPool sync.Pool
+
+func writeInt(w *bufio.Writer, n int) error {
+	if n < 0 {
+		panic("BUG: int must be positive")
+	}
+
+	v := intBufPool.Get()
+	if v == nil {
+		v = make([]byte, maxIntChars+8)
+	}
+	buf := v.([]byte)
+	i := len(buf) - 1
+	for {
+		v := byte(n % 10)
+		n /= 10
+		buf[i] = '0' + v
+		if n == 0 {
+			break
+		}
+		i--
+	}
+	_, err := w.Write(buf[i:])
+	intBufPool.Put(v)
+	return err
 }
