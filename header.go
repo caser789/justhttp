@@ -409,6 +409,48 @@ func (h *RequestHeader) parseHeaders(buf []byte) ([]byte, error) {
 	return p.b, nil
 }
 
+func (h *RequestHeader) Write(w *bufio.Writer) error {
+	method := h.Method
+	if len(method) == 0 {
+		method = strGet
+	}
+	w.Write(method)
+	w.WriteByte(' ')
+	if len(h.RequestURI) == 0 {
+		return fmt.Errorf("missing required RequestURI")
+	}
+	w.Write(h.RequestURI)
+	w.WriteByte(' ')
+	w.Write(strHTTP11)
+	w.Write(strCRLF)
+
+	if len(h.UserAgent) > 0 {
+		writeHeaderLine(w, strUserAgent, h.UserAgent)
+	}
+	if len(h.Referer) > 0 {
+		writeHeaderLine(w, strReferer, h.Referer)
+	}
+
+	if len(h.Host) == 0 {
+		return fmt.Errorf("missing required Host header")
+	}
+	writeHeaderLine(w, strHost, h.Host)
+
+	if h.IsMethodPost() {
+		if len(h.ContentType) == 0 {
+			return fmt.Errorf("missing required Content-Type header for POST request")
+		}
+		writeHeaderLine(w, strContentType, h.ContentType)
+		if h.ContentLength < 0 {
+			return fmt.Errorf("missing required Content-Length header for POST request")
+		}
+		writeContentLength(w, h.ContentLength)
+	}
+
+	_, err := w.Write(strCRLF)
+	return err
+}
+
 //////////////////////////////////////////////////
 // helpers
 //////////////////////////////////////////////////
