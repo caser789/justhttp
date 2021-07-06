@@ -139,6 +139,40 @@ func TestResponseHeaderReadSuccess(t *testing.T) {
 		200, 0, "aa", "sss")
 }
 
+func TestResponseHeaderReadError(t *testing.T) {
+	h := &ResponseHeader{}
+
+	// incorrect first line
+	testResponseHeaderReadError(t, h, "fo")
+	testResponseHeaderReadError(t, h, "foobarbaz")
+	testResponseHeaderReadError(t, h, "HTTP/1.1")
+	testResponseHeaderReadError(t, h, "HTTP/1.1 ")
+	testResponseHeaderReadError(t, h, "HTTP/1.1 s")
+
+	// non-numeric status code
+	testResponseHeaderReadError(t, h, "HTTP/1.1 foobar OK\r\nContent-Length: 123\r\nContent-Type: text/html\r\n\r\n")
+	testResponseHeaderReadError(t, h, "HTTP/1.1 123foobar OK\r\nContent-Length: 123\r\nContent-Type: text/html\r\n\r\n")
+	testResponseHeaderReadError(t, h, "HTTP/1.1 foobar344 OK\r\nContent-Length: 123\r\nContent-Type: text/html\r\n\r\n")
+
+	// no headers
+	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\n")
+	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\n\r\n")
+
+	// no trailing crlf
+	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\nContent-Length: 123\r\nContent-Type: text/html\r\n")
+
+	// non-numeric content-length
+	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\nContent-Length: faaa\r\nContent-Type: text/html\r\n\r\n")
+	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\nContent-Length: 123aa\r\nContent-Type: text/html\r\n\r\n")
+	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\nContent-Length: aa124\r\nContent-Type: text/html\r\n\r\n")
+
+	// no content-type
+	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\nContent-Length: 123\r\n\r\n")
+
+	// no content-length
+	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\nContent-Type: foo/bar\r\n\r\n")
+}
+
 func testResponseHeaderReadSuccess(t *testing.T, h *ResponseHeader, headers string, expectedStatusCode, expectedContentLength int,
 	expectedContentType, expectedTrailer string) {
 	r := bytes.NewBufferString(headers)
@@ -149,6 +183,19 @@ func testResponseHeaderReadSuccess(t *testing.T, h *ResponseHeader, headers stri
 	}
 	verifyResponseHeader(t, h, expectedStatusCode, expectedContentLength, expectedContentType)
 	verifyTrailer(t, br, expectedTrailer)
+}
+
+func testResponseHeaderReadError(t *testing.T, h *ResponseHeader, headers string) {
+	r := bytes.NewBufferString(headers)
+	br := bufio.NewReader(r)
+	err := h.Read(br)
+	if err == nil {
+		t.Fatalf("Expecting error when reading response header %q", headers)
+	}
+
+	// make sure response header works after error
+	testResponseHeaderReadSuccess(t, h, "HTTP/1.1 200 OK\r\nContent-Type: foo/bar\r\nContent-Length: 12345\r\n\r\nsss",
+		200, 12345, "foo/bar", "sss")
 }
 
 func getHeaders(n int) string {
