@@ -40,7 +40,7 @@ func testResponseConnectionClose(t *testing.T, connectionClose bool) {
 	}
 }
 
-func _TestResponseHeaderTooBig(t *testing.T) {
+func TestResponseHeaderTooBig(t *testing.T) {
 	s := "HTTP:/1.1 200 OK\r\nContent-Type: sss\r\nContent-Length: 0\r\n" + getHeaders(100500) + "\r\n"
 	r := bytes.NewBufferString(s)
 	br := bufio.NewReaderSize(r, 4096)
