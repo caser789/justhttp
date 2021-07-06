@@ -73,34 +73,34 @@ func (x *URI) Parse(host, uri []byte) {
 
 // Appends URI to dst.
 func (x *URI) AppendBytes(dst []byte) []byte {
-    startPos := len(dst)
-    scheme := x.Scheme
-    if len(scheme) == 0 {
-        scheme = strHTTP
-    }
-    dst = append(dst, scheme...)
-    dst = append(dst, strColonSlashSlash...)
-    dst = append(dst, x.Host...)
-    lowercaseBytes(dst[startPos:])
-    return x.AppendRequestURI(dst)
+	startPos := len(dst)
+	scheme := x.Scheme
+	if len(scheme) == 0 {
+		scheme = strHTTP
+	}
+	dst = append(dst, scheme...)
+	dst = append(dst, strColonSlashSlash...)
+	dst = append(dst, x.Host...)
+	lowercaseBytes(dst[startPos:])
+	return x.AppendRequestURI(dst)
 }
 
 // Appends RequestURI to dst. RequestURI doesn't contain Scheme and host.
 func (x *URI) AppendRequestURI(dst []byte) []byte {
-    path := x.Path
-    if len(path) == 0 {
-        path = strSlash
-    }
-    dst = appendQuotedArg(dst, path)
-    if x.QueryArgs.Len() > 0 {
-        dst = append(dst, '?')
-        dst = x.QueryArgs.AppendBytes(dst)
-    }
-    if len(x.Hash) > 0 {
-        dst = append(dst, '#')
-        dst = append(dst, x.Hash...)
-    }
-    return dst
+	path := x.Path
+	if len(path) == 0 {
+		path = strSlash
+	}
+	dst = appendQuotedArg(dst, path)
+	if x.QueryArgs.Len() > 0 {
+		dst = append(dst, '?')
+		dst = x.QueryArgs.AppendBytes(dst)
+	}
+	if len(x.Hash) > 0 {
+		dst = append(dst, '#')
+		dst = append(dst, x.Hash...)
+	}
+	return dst
 }
 
 func splitHostUri(host, uri []byte) ([]byte, []byte, []byte) {
