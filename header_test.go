@@ -184,6 +184,19 @@ func TestRequestHeaderTooBig(t *testing.T) {
 	}
 }
 
+func TestRequestHeaderBufioPeek(t *testing.T) {
+	r := &bufioPeekReader{
+		s: "GET / HTTP/1.1\r\nHost: foobar.com\r\n" + getHeaders(10) + "\r\naaaa",
+	}
+	br := bufio.NewReaderSize(r, 4096)
+	h := &RequestHeader{}
+	if err := h.Read(br); err != nil {
+		t.Fatalf("Unexpected error when reading request: %s", err)
+	}
+	verifyRequestHeader(t, h, 0, "/", "foobar.com", "", "")
+	verifyTrailer(t, br, "aaaa")
+}
+
 func testResponseHeaderReadSuccess(t *testing.T, h *ResponseHeader, headers string, expectedStatusCode, expectedContentLength int,
 	expectedContentType, expectedTrailer string) {
 	r := bytes.NewBufferString(headers)
@@ -247,6 +260,25 @@ func verifyResponseHeader(t *testing.T, h *ResponseHeader, expectedStatusCode, e
 	}
 	if !bytes.Equal(h.ContentType, []byte(expectedContentType)) {
 		t.Fatalf("Unexpected content type %q. Expected %q", h.ContentType, expectedContentType)
+	}
+}
+
+func verifyRequestHeader(t *testing.T, h *RequestHeader, expectedContentLength int,
+	expectedReuqestURI, expectedHost, expectedReferer, expectedContentType string) {
+	if h.ContentLength != expectedContentLength {
+		t.Fatalf("Unexpected Content-Length %d. Expected %d", h.ContentLength, expectedContentLength)
+	}
+	if !bytes.Equal(h.RequestURI, []byte(expectedReuqestURI)) {
+		t.Fatalf("Unexpected RequestURI %q. Expected %q", h.RequestURI, expectedReuqestURI)
+	}
+	if !bytes.Equal(h.Host, []byte(expectedHost)) {
+		t.Fatalf("Unexpected host %q. Expected %q", h.Host, expectedHost)
+	}
+	if !bytes.Equal(h.Referer, []byte(expectedReferer)) {
+		t.Fatalf("Unexpected referer %q. Expected %q", h.Referer, expectedReferer)
+	}
+	if !bytes.Equal(h.ContentType, []byte(expectedContentType)) {
+		t.Fatalf("Unexpected content-type %q. Expected %q", h.ContentType, expectedContentType)
 	}
 }
 
