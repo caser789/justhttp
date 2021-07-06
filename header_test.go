@@ -41,7 +41,7 @@ func testResponseConnectionClose(t *testing.T, connectionClose bool) {
 }
 
 func TestResponseHeaderTooBig(t *testing.T) {
-	s := "HTTP:/1.1 200 OK\r\nContent-Type: sss\r\nContent-Length: 0\r\n" + getHeaders(100500) + "\r\n"
+	s := "HTTP/1.1 200 OK\r\nContent-Type: sss\r\nContent-Length: 0\r\n" + getHeaders(100500) + "\r\n"
 	r := bytes.NewBufferString(s)
 	br := bufio.NewReaderSize(r, 4096)
 	h := &ResponseHeader{}
@@ -285,6 +285,34 @@ func TestRequestHeaderReadSuccess(t *testing.T) {
 		0, "/aaa", "aaa.com", "", "", "sss")
 }
 
+func TestRequestHeaderReadError(t *testing.T) {
+	h := &RequestHeader{}
+
+	// invalid method
+	testRequestHeaderReadError(t, h, "POST /foo/bar HTTP/1.1\r\nHost: google.com\r\n\r\n")
+
+	// missing RequestURI
+	testRequestHeaderReadError(t, h, "GET  HTTP/1.1\r\nHost: google.com\r\n\r\n")
+
+	// no host
+	testRequestHeaderReadError(t, h, "GET /foo/bar HTTP/1.1\r\nFOObar: assdfd\r\n\r\naaa")
+
+	// no host, no headers
+	testRequestHeaderReadError(t, h, "GET /foo/bar HTTP/1.1\r\n\r\nfoobar")
+
+	// post with invalid content-length
+	testRequestHeaderReadError(t, h, "POST /a HTTP/1.1\r\nHost: bb\r\nContent-Type: aa\r\nContent-Length: dff\r\n\r\n")
+
+	// post without content-length and content-type
+	testRequestHeaderReadError(t, h, "POST /aaa HTTP/1.1\r\nHost: aaa.com\r\n\r\n")
+
+	// post without content-type
+	testRequestHeaderReadError(t, h, "POST /abc HTTP/1.1\r\nHost: aa.com\r\nContent-Length: 123\r\n\r\n")
+
+	// post without content-length
+	testRequestHeaderReadError(t, h, "POST /abc HTTP/1.1\r\nHost: aa.com\r\nContent-Type: adv\r\n\r\n")
+}
+
 func testRequestHeaderReadSuccess(t *testing.T, h *RequestHeader, headers string, expectedContentLength int,
 	expectedReuqestURI, expectedHost, expectedReferer, expectedContentType, expectedTrailer string) {
 	r := bytes.NewBufferString(headers)
@@ -295,6 +323,19 @@ func testRequestHeaderReadSuccess(t *testing.T, h *RequestHeader, headers string
 	}
 	verifyRequestHeader(t, h, expectedContentLength, expectedReuqestURI, expectedHost, expectedReferer, expectedContentType)
 	verifyTrailer(t, br, expectedTrailer)
+}
+
+func testRequestHeaderReadError(t *testing.T, h *RequestHeader, headers string) {
+	r := bytes.NewBufferString(headers)
+	br := bufio.NewReader(r)
+	err := h.Read(br)
+	if err == nil {
+		t.Fatalf("Expecting error when reading request header %q", headers)
+	}
+
+	// make sure request header works after error
+	testRequestHeaderReadSuccess(t, h, "GET /foo/bar HTTP/1.1\r\nHost: aaaa\r\n\r\nxxx",
+		0, "/foo/bar", "aaaa", "", "", "xxx")
 }
 
 func testResponseHeaderReadSuccess(t *testing.T, h *ResponseHeader, headers string, expectedStatusCode, expectedContentLength int,
