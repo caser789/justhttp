@@ -197,6 +197,106 @@ func TestRequestHeaderBufioPeek(t *testing.T) {
 	verifyTrailer(t, br, "aaaa")
 }
 
+func TestRequestHeaderReadSuccess(t *testing.T) {
+	h := &RequestHeader{}
+
+	// simple headers
+	testRequestHeaderReadSuccess(t, h, "GET /foo/bar HTTP/1.1\r\nHost: google.com\r\n\r\n",
+		0, "/foo/bar", "google.com", "", "", "")
+
+	// simple headers with body
+	testRequestHeaderReadSuccess(t, h, "GET /a/bar HTTP/1.1\r\nHost: gole.com\r\n\r\nfoobar",
+		0, "/a/bar", "gole.com", "", "", "foobar")
+
+	// ancient http protocol
+	testRequestHeaderReadSuccess(t, h, "GET /bar HTTP/1.0\r\nHost: gole\r\n\r\npppp",
+		0, "/bar", "gole", "", "", "pppp")
+
+	// complex headers with body
+	testRequestHeaderReadSuccess(t, h, "GET /aabar HTTP/1.1\r\nAAA: bbb\r\nHost: ole.com\r\nAA: bb\r\n\r\nzzz",
+		0, "/aabar", "ole.com", "", "", "zzz")
+
+	// lf instead of crlf
+	testRequestHeaderReadSuccess(t, h, "GET /foo/bar HTTP/1.1\nHost: google.com\n\n",
+		0, "/foo/bar", "google.com", "", "", "")
+
+	// post method
+	testRequestHeaderReadSuccess(t, h, "POST /aaa?bbb HTTP/1.1\r\nHost: foobar.com\r\nContent-Length: 1235\r\nContent-Type: aaa\r\n\r\nabcdef",
+		1235, "/aaa?bbb", "foobar.com", "", "aaa", "abcdef")
+
+	// zero-length headers with mixed crlf and lf
+	testRequestHeaderReadSuccess(t, h, "GET /a HTTP/1.1\nHost: aaa\r\nZero: \n: Zero-Value\n\r\nxccv",
+		0, "/a", "aaa", "", "", "xccv")
+
+	// no space after colon
+	testRequestHeaderReadSuccess(t, h, "GET /a HTTP/1.1\nHost:aaaxd\n\nsdfds",
+		0, "/a", "aaaxd", "", "", "sdfds")
+
+	// get with zero content-length
+	testRequestHeaderReadSuccess(t, h, "GET /xxx HTTP/1.1\nHost: aaa.com\nContent-Length: 0\n\n",
+		0, "/xxx", "aaa.com", "", "", "")
+
+	// get with non-zero content-length
+	testRequestHeaderReadSuccess(t, h, "GET /xxx HTTP/1.1\nHost: aaa.com\nContent-Length: 123\n\n",
+		0, "/xxx", "aaa.com", "", "", "")
+
+	// invalid case
+	testRequestHeaderReadSuccess(t, h, "GET /aaa HTTP/1.1\nhoST: bbb.com\n\naas",
+		0, "/aaa", "bbb.com", "", "", "aas")
+
+	// referer
+	testRequestHeaderReadSuccess(t, h, "GET /asdf HTTP/1.1\nHost: aaa.com\nReferer: bb.com\n\naaa",
+		0, "/asdf", "aaa.com", "bb.com", "", "aaa")
+
+	// duplicate host
+	testRequestHeaderReadSuccess(t, h, "GET /aa HTTP/1.1\nHost: aaaaaa.com\r\nHost: bb.com\r\n\r\n",
+		0, "/aa", "bb.com", "", "", "")
+
+	// post with duplicate content-type
+	testRequestHeaderReadSuccess(t, h, "POST /a HTTP/1.1\r\nHost: aa\r\nContent-Type: ab\r\nContent-Length: 123\r\nContent-Type: xx\r\n\r\n",
+		123, "/a", "aa", "", "xx", "")
+
+	// post with duplicate content-length
+	testRequestHeaderReadSuccess(t, h, "POST /xx HTTP/1.1\r\nHost: aa\r\nContent-Type: s\r\nContent-Length: 13\r\nContent-Length: 1\r\n\r\n",
+		1, "/xx", "aa", "", "s", "")
+
+	// non-post with content-type
+	testRequestHeaderReadSuccess(t, h, "GET /aaa HTTP/1.1\r\nHost: bb.com\r\nContent-Type: aaab\r\n\r\n",
+		0, "/aaa", "bb.com", "", "aaab", "")
+
+	// non-post with content-length
+	testRequestHeaderReadSuccess(t, h, "HEAD / HTTP/1.1\r\nHost: aaa.com\r\nContent-Length: 123\r\n\r\n",
+		0, "/", "aaa.com", "", "", "")
+
+	// non-post with content-type and content-length
+	testRequestHeaderReadSuccess(t, h, "GET /aa HTTP/1.1\r\nHost: aa.com\r\nContent-Type: abd/test\r\nContent-Length: 123\r\n\r\n",
+		0, "/aa", "aa.com", "", "abd/test", "")
+
+	// request uri with hostname
+	testRequestHeaderReadSuccess(t, h, "GET http://gooGle.com/FoO/%20bar?xxx#aaa HTTP/1.1\r\nHost: aa.cOM\r\n\r\ntrail",
+		0, "http://gooGle.com/FoO/%20bar?xxx#aaa", "aa.cOM", "", "", "trail")
+
+	// no protocol in the first line
+	testRequestHeaderReadSuccess(t, h, "GET /foo/bar\r\nHost: google.com\r\n\r\nisdD",
+		0, "/foo/bar", "google.com", "", "", "isdD")
+
+	// blan lines before the first line
+	testRequestHeaderReadSuccess(t, h, "\r\n\n\r\nGET /aaa HTTP/1.1\r\nHost: aaa.com\r\n\r\nsss",
+		0, "/aaa", "aaa.com", "", "", "sss")
+}
+
+func testRequestHeaderReadSuccess(t *testing.T, h *RequestHeader, headers string, expectedContentLength int,
+	expectedReuqestURI, expectedHost, expectedReferer, expectedContentType, expectedTrailer string) {
+	r := bytes.NewBufferString(headers)
+	br := bufio.NewReader(r)
+	err := h.Read(br)
+	if err != nil {
+		t.Fatalf("Unexpected error when parsing request headers: %s. headers=%q", err, headers)
+	}
+	verifyRequestHeader(t, h, expectedContentLength, expectedReuqestURI, expectedHost, expectedReferer, expectedContentType)
+	verifyTrailer(t, br, expectedTrailer)
+}
+
 func testResponseHeaderReadSuccess(t *testing.T, h *ResponseHeader, headers string, expectedStatusCode, expectedContentLength int,
 	expectedContentType, expectedTrailer string) {
 	r := bytes.NewBufferString(headers)
