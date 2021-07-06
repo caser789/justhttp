@@ -184,3 +184,60 @@ func parseChunkSize(r *bufio.Reader) (int, error) {
 	}
 	return n, nil
 }
+
+type Response struct {
+	Header ResponseHeader
+	Body   []byte
+
+	// if set to true, Response.Read() skips reading body.
+	// Use it for HEAD requests
+	SkipBody bool
+}
+
+func (resp *Response) Clear() {
+	resp.Header.Clear()
+	resp.Body = resp.Body[:0]
+}
+
+func (resp *Response) Read(r *bufio.Reader) error {
+	resp.Body = resp.Body[:0]
+
+	err := resp.Header.Read(r)
+	if err != nil {
+		return err
+	}
+
+	if isSkipResponseBody(resp.Header.StatusCode) || resp.SkipBody {
+		resp.SkipBody = false
+		return nil
+	}
+
+	body, err := readBody(r, resp.Header.ContentLength, resp.Body)
+	if err != nil {
+		resp.Clear()
+		return err
+	}
+	resp.Body = body
+	return nil
+}
+
+func (resp *Response) Write(w *bufio.Writer) error {
+	contentLengthOld := resp.Header.ContentLength
+	resp.Header.ContentLength = len(resp.Body)
+	err := resp.Header.Write(w)
+	resp.Header.ContentLength = contentLengthOld
+	if err != nil {
+		return err
+	}
+	_, err = w.Write(resp.Body)
+	return err
+}
+
+func isSkipResponseBody(statusCode int) bool {
+	// From http/1.1 specs:
+	// All 1xx (informational), 204 (no content), and 304 (not modified) responses MUST NOT include a message-body
+	if statusCode >= 100 && statusCode < 200 {
+		return true
+	}
+	return statusCode == 204 || statusCode == 304
+}
