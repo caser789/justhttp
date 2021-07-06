@@ -11,7 +11,7 @@ import (
 
 var (
 	defaultServerName  = []byte("fasthttp server")
-	defaultContentType = []byte("test/plain; charset=utf-8")
+	defaultContentType = []byte("text/plain; charset=utf-8")
 )
 
 var (
@@ -83,7 +83,7 @@ func (h *ResponseHeader) Clear() {
 func (h *ResponseHeader) Write(w *bufio.Writer) error {
 	statusCode := h.StatusCode
 	if statusCode < 0 {
-		return fmt.Errorf("response cannot have negative code=%d", statusCode)
+		return fmt.Errorf("response cannot have negative status code=%d", statusCode)
 	}
 	if statusCode == 0 {
 		statusCode = 200
@@ -150,7 +150,7 @@ func (h *ResponseHeader) tryRead(r *bufio.Reader, n int) error {
 		if isNeedMoreError(err) && !isEOF {
 			return err
 		}
-		return fmt.Errorf("error when reading resposne headers: %s", err)
+		return fmt.Errorf("erorr when reading response headers: %s", err)
 	}
 	headersLen := bLen - len(b)
 	mustDiscard(r, headersLen)
@@ -192,10 +192,12 @@ func (h *ResponseHeader) parseFirstLine(buf []byte) (b []byte, err error) {
 	return bNext, nil
 }
 
-func (h *ResponseHeader) parseHeaders(buf []byte) (b []byte, err error) {
+func (h *ResponseHeader) parseHeaders(buf []byte) ([]byte, error) {
 	h.ContentLength = -2
+
 	var p headerParser
 	p.init(buf)
+	var err error
 	for p.next() {
 		if bytes.Equal(p.key, strContentType) {
 			h.ContentType = append(h.ContentType[:0], p.value...)
@@ -251,8 +253,7 @@ func statusLine(statusCode int) []byte {
 		statusText = "Internal server error"
 	}
 
-	h = []byte(fmt.Sprintf("HTTP/1.1 %d %s\n\r", statusCode, statusText))
-	// TODO: why create new map?
+	h = []byte(fmt.Sprintf("HTTP/1.1 %d %s\r\n", statusCode, statusText))
 	newM := make(map[int][]byte, len(m)+1)
 	for k, v := range m {
 		newM[k] = v
