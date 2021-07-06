@@ -173,6 +173,17 @@ func TestResponseHeaderReadError(t *testing.T) {
 	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\nContent-Type: foo/bar\r\n\r\n")
 }
 
+func TestRequestHeaderTooBig(t *testing.T) {
+	s := "GET / HTTP/1.1\r\nHost: aaa.com\r\n" + getHeaders(100500) + "\r\n"
+	r := bytes.NewBufferString(s)
+	br := bufio.NewReaderSize(r, 4096)
+	h := &RequestHeader{}
+	err := h.Read(br)
+	if err == nil {
+		t.Fatalf("Expecting error when reading too big header")
+	}
+}
+
 func testResponseHeaderReadSuccess(t *testing.T, h *ResponseHeader, headers string, expectedStatusCode, expectedContentLength int,
 	expectedContentType, expectedTrailer string) {
 	r := bytes.NewBufferString(headers)

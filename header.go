@@ -15,18 +15,30 @@ var (
 )
 
 var (
-	strCRLF       = []byte("\r\n")
-	strColonSpace = []byte(": ")
+	strSlash           = []byte("/")
+	strCRLF            = []byte("\r\n")
+	strHTTP            = []byte("http")
+	strHTTP11          = []byte("HTTP/1.1")
+	strColonSlashSlash = []byte("://")
+	strColonSpace      = []byte(": ")
+
+	strGet  = []byte("GET")
+	strHead = []byte("HEAD")
+	strPost = []byte("POST")
 
 	strConnection       = []byte("Connection")
 	strContentLength    = []byte("Content-Length")
 	strContentType      = []byte("Content-Type")
-	strServer           = []byte("Server")
 	strDate             = []byte("Date")
+	strHost             = []byte("Host")
+	strReferer          = []byte("Referer")
+	strServer           = []byte("Server")
 	strTransferEncoding = []byte("Transfer-Encoding")
+	strUserAgent        = []byte("User-Agent")
 
-	strClose   = []byte("close")
-	strChunked = []byte("chunked")
+	strClose               = []byte("close")
+	strChunked             = []byte("chunked")
+	strPostArgsContentType = []byte("application/x-www-form-urlencoded")
 )
 
 // Atomic values
@@ -230,6 +242,169 @@ func (h *ResponseHeader) parseHeaders(buf []byte) ([]byte, error) {
 	}
 	if h.ContentLength == -2 {
 		return nil, fmt.Errorf("missing both Content-Length and Transfer-Encoding: chunked in %q", buf)
+	}
+	return p.b, nil
+}
+
+// RequestHeader
+type RequestHeader struct {
+	Method        []byte
+	RequestURI    []byte
+	Host          []byte
+	UserAgent     []byte
+	Referer       []byte
+	ContentType   []byte
+	ContentLength int
+}
+
+func (h *RequestHeader) IsMethodGet() bool {
+	return bytes.Equal(h.Method, strGet)
+}
+
+func (h *RequestHeader) IsMethodPost() bool {
+	return bytes.Equal(h.Method, strPost)
+}
+
+func (h *RequestHeader) IsMethodHead() bool {
+	return bytes.Equal(h.Method, strHead)
+}
+
+func (h *RequestHeader) Clear() {
+	h.Method = h.Method[:0]
+	h.RequestURI = h.RequestURI[:0]
+	h.Host = h.Host[:0]
+	h.UserAgent = h.UserAgent[:0]
+	h.Referer = h.Referer[:0]
+	h.ContentType = h.ContentType[:0]
+	h.ContentLength = 0
+}
+
+func (h *RequestHeader) Read(r *bufio.Reader) error {
+	n := 1
+	for {
+		err := h.tryRead(r, n)
+		if err == nil {
+			return nil
+		}
+		if !isNeedMoreError(err) {
+			h.Clear()
+			return err
+		}
+		n = r.Buffered() + 1
+	}
+}
+
+func (h *RequestHeader) tryRead(r *bufio.Reader, n int) error {
+	h.Clear()
+	b, err := r.Peek(n)
+	if len(b) == 0 {
+		if err == io.EOF {
+			return err
+		}
+		if err == nil {
+			panic("bufio.Reader.Peek() returned nil, nil")
+		}
+		return fmt.Errorf("error when reading request headers: %s", err)
+	}
+	isEOF := (err != nil)
+	b = mustPeekBuffered(r)
+	bLen := len(b)
+	if b, err = h.parse(b); err != nil {
+		if isNeedMoreError(err) && !isEOF {
+			return err
+		}
+		return fmt.Errorf("error when reading request headers: %s", err)
+	}
+	headersLen := bLen - len(b)
+	mustDiscard(r, headersLen)
+	return nil
+}
+
+func (h *RequestHeader) parse(buf []byte) (b []byte, err error) {
+	b, err = h.parseFirstLine(buf)
+	if err != nil {
+		return nil, err
+	}
+	return h.parseHeaders(b)
+}
+
+func (h *RequestHeader) parseFirstLine(buf []byte) (b []byte, err error) {
+	bNext := buf
+	for len(b) == 0 {
+		if b, bNext, err = nextLine(bNext); err != nil {
+			return nil, err
+		}
+	}
+
+	// parse method
+	n := bytes.IndexByte(b, ' ')
+	if n <= 0 {
+		return nil, fmt.Errorf("cannot find http request method in %q", buf)
+	}
+	h.Method = append(h.Method[:0], b[:n]...)
+	b = b[n+1:]
+
+	// parse requestURI
+	n = bytes.IndexByte(b, ' ')
+	if n < 0 {
+		n = len(b)
+	} else if n == 0 {
+		return nil, fmt.Errorf("RequestURI cannot be empty in %q", buf)
+	}
+	h.RequestURI = append(h.RequestURI[:0], b[:n]...)
+
+	return bNext, nil
+}
+
+func (h *RequestHeader) parseHeaders(buf []byte) ([]byte, error) {
+	h.ContentLength = -2
+
+	var p headerParser
+	p.init(buf)
+	var err error
+	for p.next() {
+		if bytes.Equal(p.key, strHost) {
+			h.Host = append(h.Host[:0], p.value...)
+		}
+		if bytes.Equal(p.key, strUserAgent) {
+			h.UserAgent = append(h.UserAgent[:0], p.value...)
+		}
+		if bytes.Equal(p.key, strReferer) {
+			h.Referer = append(h.Referer[:0], p.value...)
+		}
+		if bytes.Equal(p.key, strContentType) {
+			h.ContentType = append(h.ContentType[:0], p.value...)
+		}
+		if bytes.Equal(p.key, strContentLength) && h.ContentLength != -1 {
+			h.ContentLength, err = parseContentLength(p.value)
+			if err != nil {
+				if isNeedMoreError(err) {
+					return nil, err
+				}
+				return nil, fmt.Errorf("cannot parse Content-Length %q: %s at %q", p.value, err, buf)
+			}
+		}
+		if bytes.Equal(p.key, strTransferEncoding) && bytes.Equal(p.value, strChunked) {
+			h.ContentLength = -1
+		}
+	}
+	if p.err != nil {
+		return nil, p.err
+	}
+
+	if len(h.Host) == 0 {
+		return nil, fmt.Errorf("missing required Host header in %q", buf)
+	}
+
+	if h.IsMethodPost() {
+		if len(h.ContentType) == 0 {
+			return nil, fmt.Errorf("missing Content-Type for POST header in %q", buf)
+		}
+		if h.ContentLength == -2 {
+			return nil, fmt.Errorf("missing Content-Length for POST header in %q", buf)
+		}
+	} else {
+		h.ContentLength = 0
 	}
 	return p.b, nil
 }
