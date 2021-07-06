@@ -1,0 +1,90 @@
+package fasthttp
+
+import (
+	"bytes"
+)
+
+type URI struct {
+	// Full uri like {Scheme}://{Host}{Path}?{QueryString}#{Hash}
+	URI []byte
+
+	// Original Path passed to URI.Parse()
+	PathOriginal []byte
+
+	Scheme      []byte
+	Host        []byte
+	Path        []byte
+	QueryString []byte
+	Hash        []byte
+
+	// Becomes available after URI.ParseQueryArgs() call
+	QueryArgs       Args
+	parsedQueryArgs bool
+}
+
+func (x *URI) Clear() {
+	x.URI = x.URI[:0]
+	x.PathOriginal = x.PathOriginal[:0]
+	x.Scheme = x.Scheme[:0]
+	x.Host = x.Host[:0]
+	x.Path = x.Path[:0]
+	x.QueryString = x.QueryString[:0]
+	x.Hash = x.Hash[:0]
+	x.parsedQueryArgs = false
+}
+
+func (x *URI) Parse(host, uri []byte) {
+	x.Clear()
+
+	scheme, host, uri := splitHostUri(host, uri)
+	x.Scheme = append(x.Scheme, scheme...)
+	lowercaseBytes(x.Scheme)
+	x.Host = append(x.Host, host...)
+	lowercaseBytes(x.Host)
+
+	x.URI = append(x.URI, x.Scheme...)
+	lowercaseBytes(x.URI)
+	x.URI = append(x.URI, strColonSlashSlash...)
+	x.URI = append(x.URI, x.Host...)
+	if len(uri) > 0 && uri[0] != '/' {
+		x.URI = append(x.URI, '/')
+	}
+	x.URI = append(x.URI, uri...)
+
+	b := uri
+	n := bytes.IndexByte(b, '?')
+	if n < 0 {
+		x.PathOriginal = append(x.PathOriginal, b...)
+		x.Path = decodeArg(x.Path, b, false)
+		return
+	}
+	x.PathOriginal = append(x.PathOriginal, b[:n]...)
+	x.Path = decodeArg(x.Path, x.PathOriginal, false)
+	b = b[n+1:]
+
+	n = bytes.IndexByte(b, '#')
+	if n >= 0 {
+		x.Hash = append(x.Hash, b[n+1:]...)
+		b = b[:n]
+	}
+
+	x.QueryString = append(x.QueryString, b...)
+}
+
+func splitHostUri(host, uri []byte) ([]byte, []byte, []byte) {
+	n := bytes.Index(uri, strColonSlashSlash)
+	if n < 0 {
+		return strHTTP, host, uri
+	}
+	scheme := uri[:n]
+	if bytes.IndexByte(scheme, '/') >= 0 {
+		return strHTTP, host, uri
+	}
+	n += len(strColonSlashSlash)
+	uri = uri[n:]
+	n = bytes.IndexByte(uri, '/')
+	if n < 0 {
+		return scheme, uri, strSlash
+	}
+	return scheme, uri[:n], uri[n:]
+}
