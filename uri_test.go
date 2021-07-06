@@ -70,3 +70,60 @@ func testURIParse(t *testing.T, u *URI, host, uri,
 		t.Fatalf("Unexpected hash %q. Expected %q. host=%q, uri=%q", u.Hash, expectedHash, host, uri)
 	}
 }
+
+func TestURIParseNilHost(t *testing.T) {
+    testURIParseScheme(t, "http://google.com/foo?bar#baz", "http")
+    testURIParseScheme(t, "HTtP://google.com/", "http")
+    testURIParseScheme(t, "://google.com/", "")
+    testURIParseScheme(t, "fTP://aaa.com", "ftp")
+    testURIParseScheme(t, "httPS://aaa.com", "https")
+}
+
+func testURIParseScheme(t *testing.T, uri, expectedScheme string) {
+    var u URI
+    u.Parse(nil, []byte(uri))
+    if string(u.Scheme) != expectedScheme {
+        t.Fatalf("Unexpected scheme %q. Expected %q for uri %q", u.Scheme, expectedScheme, uri)
+    }
+}
+
+func TestURIAppendBytes(t *testing.T) {
+    var args Args
+
+    // empty scheme, path and hash
+    testURIAppendBytes(t, "", "foobar.com", "", "", &args, "http://foobar.com/")
+
+    // empty scheme and hash
+    testURIAppendBytes(t, "", "aa.com", "/foo/bar", "", &args, "http://aa.com/foo/bar")
+
+    // empty hash
+    testURIAppendBytes(t, "fTP", "XXx.com", "/foo", "", &args, "ftp://xxx.com/foo")
+
+    // empty args
+    testURIAppendBytes(t, "https", "xx.com", "/", "aaa", &args, "https://xx.com/#aaa")
+
+	// non-empty args and non-ASCII path
+	args.Set("foo", "bar")
+	args.Set("xxx", "йух")
+	testURIAppendBytes(t, "", "xxx.com", "/тест123", "2er", &args, "http://xxx.com/%D1%82%D0%B5%D1%81%D1%82123?foo=bar&xxx=%D0%B9%D1%83%D1%85#2er")
+}
+
+func testURIAppendBytes(t *testing.T, scheme, host, path, hash string, args *Args, expectedURI string) {
+    var u URI
+
+    u.Scheme = []byte(scheme)
+    u.Host = []byte(host)
+    u.Path = []byte(path)
+    u.Hash = []byte(hash)
+    u.QueryArgs = *args
+
+    prefix := []byte("prefix")
+    buf := prefix
+    buf = u.AppendBytes(buf)
+    if !bytes.Equal(prefix, buf[:len(prefix)]) {
+        t.Fatalf("Unexpected prefix %q. Expected %q", buf[:len(prefix)], prefix)
+    }
+    if string(buf[len(prefix):]) != expectedURI {
+        t.Fatalf("Unexpected URI: %q. Expected %q", buf[len(prefix):], expectedURI)
+    }
+}
