@@ -24,7 +24,7 @@ func (a *Args) Len() int {
 }
 
 func (a *Args) Set(key, value string) {
-    a.buf = AppendBytesStr(a.buf[:0], value)
+	a.buf = AppendBytesStr(a.buf[:0], value)
 	a.SetBytes(key, a.buf)
 }
 
@@ -43,7 +43,7 @@ func (a *Args) SetBytes(key string, value []byte) {
 	if cap(a.args) > n {
 		a.args = a.args[:n+1]
 		kv := &a.args[n]
-        kv.key = AppendBytesStr(kv.key[:0], key)
+		kv.key = AppendBytesStr(kv.key[:0], key)
 		kv.value = append(kv.value[:0], value...)
 		return
 	}
@@ -115,7 +115,7 @@ func (a *Args) AppendBytes(dst []byte) []byte {
 
 // From query string
 func (a *Args) Parse(s string) {
-    a.buf = AppendBytesStr(a.buf[:0], s)
+	a.buf = AppendBytesStr(a.buf[:0], s)
 	a.ParseBytes(a.buf)
 }
 
