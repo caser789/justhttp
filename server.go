@@ -244,6 +244,9 @@ func acceptConn(s *Server, ln net.Listener) (net.Conn, error) {
 				time.Sleep(time.Second)
 				continue
 			}
+			if err != io.EOF {
+				s.logger().Printf("Permanent error: %s", err)
+			}
 			return nil, err
 		}
 		return c, nil
@@ -268,9 +271,9 @@ type ServerCtx struct {
 	// Start time for the request processing
 	Time time.Time
 
-    // Cache for arbitrary data, which may be used by RequestHandler.
-    // Cache contents may survive across requests
-    Cache interface{}
+	// Cache for arbitrary data, which may be used by RequestHandler.
+	// Cache contents may survive across requests
+	Cache interface{}
 
 	logger ctxLogger
 	s      *Server
