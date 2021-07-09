@@ -13,7 +13,7 @@ import (
 
 func TestServerTimeoutError(t *testing.T) {
 	s := &Server{
-		Handler: func(ctx *ServerCtx) {
+		Handler: func(ctx *RequestCtx) {
 			go func() {
 				ctx.Success("aaa/bbb", []byte("xxxyyy"))
 				ctx.TimeoutError("ignore this")
@@ -56,7 +56,7 @@ func TestServerTimeoutError(t *testing.T) {
 
 func TestServerConnectionClose(t *testing.T) {
 	s := &Server{
-		Handler: func(ctx *ServerCtx) {
+		Handler: func(ctx *RequestCtx) {
 			ctx.Response.Header.ConnectionClose = true
 		},
 	}
@@ -93,7 +93,7 @@ func TestServerConnectionClose(t *testing.T) {
 
 func TestServerEmptyResponse(t *testing.T) {
 	s := &Server{
-		Handler: func(ctx *ServerCtx) {
+		Handler: func(ctx *RequestCtx) {
 			// do nothing;
 		},
 	}
@@ -122,7 +122,7 @@ func TestServerEmptyResponse(t *testing.T) {
 func TestServerLogger(t *testing.T) {
 	cl := &customLogger{}
 	s := &Server{
-		Handler: func(ctx *ServerCtx) {
+		Handler: func(ctx *RequestCtx) {
 			logger := ctx.Logger()
 			h := &ctx.Request.Header
 			logger.Printf("begin")
@@ -176,7 +176,7 @@ func TestServerLogger(t *testing.T) {
 
 func TestServerRemoteAddr(t *testing.T) {
 	s := &Server{
-		Handler: func(ctx *ServerCtx) {
+		Handler: func(ctx *RequestCtx) {
 			h := &ctx.Request.Header
 			ctx.Success("text/html", []byte(fmt.Sprintf("requestURI=%s, remoteAddr=%s, remoteIP=%s",
 				h.RequestURI, ctx.RemoteAddr(), ctx.RemoteIP())))
@@ -212,9 +212,9 @@ func TestServerRemoteAddr(t *testing.T) {
 	verifyResponse(t, br, 200, "text/html", "requestURI=/foo1, remoteAddr=1.2.3.4:8765, remoteIP=1.2.3.4")
 }
 
-func TestServeConnError(t *testing.T) {
+func TestServerConnError(t *testing.T) {
 	s := &Server{
-		Handler: func(ctx *ServerCtx) {
+		Handler: func(ctx *RequestCtx) {
 			ctx.Error("foobar", 423)
 		},
 	}
@@ -257,7 +257,7 @@ func TestServeConnError(t *testing.T) {
 
 func TestServeConnSingleRequest(t *testing.T) {
 	s := &Server{
-		Handler: func(ctx *ServerCtx) {
+		Handler: func(ctx *RequestCtx) {
 			h := &ctx.Request.Header
 			ctx.Success("aaa", []byte(fmt.Sprintf("requestURI=%s, host=%s", h.RequestURI, h.Get("Host"))))
 		},
@@ -286,7 +286,7 @@ func TestServeConnSingleRequest(t *testing.T) {
 
 func TestServeConnMultiRequests(t *testing.T) {
 	s := &Server{
-		Handler: func(ctx *ServerCtx) {
+		Handler: func(ctx *RequestCtx) {
 			h := &ctx.Request.Header
 			ctx.Success("aaa", []byte(fmt.Sprintf("requestURI=%s, host=%s", h.RequestURI, h.Get("Host"))))
 		},
