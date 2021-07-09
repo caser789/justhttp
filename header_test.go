@@ -58,12 +58,6 @@ func TestResponseHeaderSetGet(t *testing.T) {
 	expectResponseHeaderGet(t, h, "baz", "xxxxx")
 	expectResponseHeaderGet(t, h, "Transfer-Encoding", "")
 
-	if !bytes.Equal(h.ContentType, []byte("aaa/bbb")) {
-		t.Fatalf("Unexpected content-type %q. Expected %q", h.ContentType, "aaa/bbb")
-	}
-	if !bytes.Equal(h.Server, []byte("aaaa")) {
-		t.Fatalf("Unexpected server %q. Expected %q", h.Server, "aaaa")
-	}
 	if h.ContentLength != 0 {
 		t.Fatalf("Unexpected content-length %d. Expected %d", h.ContentLength, 0)
 	}
@@ -87,12 +81,6 @@ func TestResponseHeaderSetGet(t *testing.T) {
 		t.Fatalf("Unexpected error when reading response header: %s", err)
 	}
 
-	if !bytes.Equal(h.ContentType, h1.ContentType) {
-		t.Fatalf("Unexpected content-type %q. Expected %q", h.ContentType, h1.ContentType)
-	}
-	if !bytes.Equal(h.Server, h1.Server) {
-		t.Fatalf("Unexpected server %q. Expected %q", h.Server, h1.Server)
-	}
 	if h.ContentLength != h1.ContentLength {
 		t.Fatalf("Unexpected content-length %d. Expected %d", h.ContentLength, h1.ContentLength)
 	}
@@ -409,18 +397,6 @@ func TestRequestHeaderSetGet(t *testing.T) {
 	expectRequestHeaderGet(t, h, "baz", "xxxxx")
 	expectRequestHeaderGet(t, h, "Transfer-Encoding", "")
 
-	if !bytes.Equal(h.Host, []byte("12345")) {
-		t.Fatalf("Unexpected host %q. Expected %q", h.Host, "12345")
-	}
-	if !bytes.Equal(h.ContentType, []byte("aaa/bbb")) {
-		t.Fatalf("Unexpected content-type %q. Expected %q", h.ContentType, "aaa/bbb")
-	}
-	if !bytes.Equal(h.UserAgent, []byte("aaabbb")) {
-		t.Fatalf("Unexpected user-agent %q. Expected %q", h.UserAgent, "aaabbb")
-	}
-	if !bytes.Equal(h.Referer, []byte("axcv")) {
-		t.Fatalf("Unexpected referer %q. Expected %q", h.Referer, "axcv")
-	}
 	if h.ContentLength != 0 {
 		t.Fatalf("Unexpected content-length %d. Expected %d", h.ContentLength, 0)
 	}
@@ -441,18 +417,6 @@ func TestRequestHeaderSetGet(t *testing.T) {
 		t.Fatalf("Unexpected error when reading request header: %s", err)
 	}
 
-	if !bytes.Equal(h1.Host, h.Host) {
-		t.Fatalf("Unexpected host %q. Expected %q", h1.Host, h.Host)
-	}
-	if !bytes.Equal(h1.ContentType, h.ContentType) {
-		t.Fatalf("Unexpected content-type %q. Expected %q", h1.ContentType, h.ContentType)
-	}
-	if !bytes.Equal(h1.UserAgent, h.UserAgent) {
-		t.Fatalf("Unexpected user-agent %q. Expected %q", h1.UserAgent, h.UserAgent)
-	}
-	if !bytes.Equal(h1.Referer, h.Referer) {
-		t.Fatalf("Unexpected referer %q. Expected %q", h1.Referer, h.Referer)
-	}
 	if h1.ContentLength != h.ContentLength {
 		t.Fatalf("Unexpected content-length %q. Expected %q", h1.ContentLength, h.ContentLength)
 	}
@@ -553,8 +517,8 @@ func verifyResponseHeader(t *testing.T, h *ResponseHeader, expectedStatusCode, e
 	if h.ContentLength != expectedContentLength {
 		t.Fatalf("Unexpected content length %d. Expected %d", h.ContentLength, expectedContentLength)
 	}
-	if !bytes.Equal(h.ContentType, []byte(expectedContentType)) {
-		t.Fatalf("Unexpected content type %q. Expected %q", h.ContentType, expectedContentType)
+	if h.Get("Content-Type") != expectedContentType {
+		t.Fatalf("Unexpected content type %q. Expected %q", h.Get("Content-Type"), expectedContentType)
 	}
 }
 
@@ -566,14 +530,14 @@ func verifyRequestHeader(t *testing.T, h *RequestHeader, expectedContentLength i
 	if !bytes.Equal(h.RequestURI, []byte(expectedReuqestURI)) {
 		t.Fatalf("Unexpected RequestURI %q. Expected %q", h.RequestURI, expectedReuqestURI)
 	}
-	if !bytes.Equal(h.Host, []byte(expectedHost)) {
-		t.Fatalf("Unexpected host %q. Expected %q", h.Host, expectedHost)
+	if h.Get("Host") != expectedHost {
+		t.Fatalf("Unexpected host %q. Expected %q", h.Get("Host"), expectedHost)
 	}
-	if !bytes.Equal(h.Referer, []byte(expectedReferer)) {
-		t.Fatalf("Unexpected referer %q. Expected %q", h.Referer, expectedReferer)
+	if h.Get("Referer") != expectedReferer {
+		t.Fatalf("Unexpected referer %q. Expected %q", h.Get("Referer"), expectedReferer)
 	}
-	if !bytes.Equal(h.ContentType, []byte(expectedContentType)) {
-		t.Fatalf("Unexpected content-type %q. Expected %q", h.ContentType, expectedContentType)
+	if h.Get("Content-Type") != expectedContentType {
+		t.Fatalf("Unexpected content-type %q. Expected %q", h.Get("Content-Type"), expectedContentType)
 	}
 }
 
