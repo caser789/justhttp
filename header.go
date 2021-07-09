@@ -247,7 +247,7 @@ func (h *ResponseHeader) parseHeaders(buf []byte) ([]byte, error) {
 			h.ConnectionClose = true
 			continue
 		}
-		h.setBytes(p.key, p.value)
+		h.h = setKV(h.h, p.key, p.value)
 	}
 	if p.err != nil {
 		return nil, p.err
@@ -263,9 +263,7 @@ func (h *ResponseHeader) parseHeaders(buf []byte) ([]byte, error) {
 }
 
 func (h *ResponseHeader) Set(key, value string) {
-	h.bufKV.key = AppendBytesStr(h.bufKV.key[:0], key)
-	normalizeHeaderKey(h.bufKV.key)
-	k := h.bufKV.key
+	k := getKeyBytes(&h.bufKV, key)
 
 	switch {
 	case bytes.Equal(strContentLength, k):
@@ -284,12 +282,12 @@ func (h *ResponseHeader) Set(key, value string) {
 		// skip other 'Connection' shit :)
 		return
 	case bytes.Equal(strTransferEncoding, k):
-		// skip Transfer-Encoding shit, since we control it ourselves
+		// Transfer-Encoding is managed automatically.
 		return
 	}
 
 	h.bufKV.value = AppendBytesStr(h.bufKV.value[:0], value)
-	h.setBytes(k, h.bufKV.value)
+	h.h = setKV(h.h, k, h.bufKV.value)
 }
 
 func (h *ResponseHeader) setBytes(key, value []byte) {
@@ -321,9 +319,7 @@ func (h *ResponseHeader) Get(key string) string {
 }
 
 func (h *ResponseHeader) Peek(key string) []byte {
-	h.bufKV.key = AppendBytesStr(h.bufKV.key[:0], key)
-	normalizeHeaderKey(h.bufKV.key)
-	k := h.bufKV.key
+	k := getKeyBytes(&h.bufKV, key)
 
 	switch {
 	case bytes.Equal(strContentType, k):
@@ -337,13 +333,7 @@ func (h *ResponseHeader) Peek(key string) []byte {
 		return nil
 	}
 
-	for i, n := 0, len(h.h); i < n; i++ {
-		kv := &h.h[i]
-		if bytes.Equal(k, kv.key) {
-			return kv.value
-		}
-	}
-	return nil
+	return peekKV(h.h, k)
 }
 
 // RequestHeader
@@ -355,6 +345,9 @@ type RequestHeader struct {
 	Referer       []byte
 	ContentType   []byte
 	ContentLength int
+
+	h     []argsKV
+	bufKV argsKV
 }
 
 func (h *RequestHeader) IsMethodGet() bool {
@@ -377,6 +370,59 @@ func (h *RequestHeader) Clear() {
 	h.Referer = h.Referer[:0]
 	h.ContentType = h.ContentType[:0]
 	h.ContentLength = 0
+
+	h.h = h.h[:0]
+}
+
+func (h *RequestHeader) Set(key, value string) {
+	k := getKeyBytes(&h.bufKV, key)
+	switch {
+	case bytes.Equal(strHost, k):
+		h.Host = AppendBytesStr(h.Host[:0], value)
+		return
+	case bytes.Equal(strUserAgent, k):
+		h.UserAgent = AppendBytesStr(h.UserAgent[:0], value)
+		return
+	case bytes.Equal(strReferer, k):
+		h.Referer = AppendBytesStr(h.Referer[:0], value)
+		return
+	case bytes.Equal(strContentType, k):
+		h.ContentType = AppendBytesStr(h.ContentType[:0], value)
+		return
+	case bytes.Equal(strContentLength, k):
+		// Content-Length is managed automatically
+		return
+	case bytes.Equal(strTransferEncoding, k):
+		// Transfer-Encoding is managed automatically
+		return
+	case bytes.Equal(strConnection, k):
+		// Connection is managed automatically
+		return
+	}
+
+	h.bufKV.value = AppendBytesStr(h.bufKV.value[:0], value)
+	h.h = setKV(h.h, k, h.bufKV.value)
+}
+
+func (h *RequestHeader) Peek(key string) []byte {
+	k := getKeyBytes(&h.bufKV, key)
+
+	switch {
+	case bytes.Equal(strHost, k):
+		return h.Host
+	case bytes.Equal(strUserAgent, k):
+		return h.UserAgent
+	case bytes.Equal(strReferer, k):
+		return h.Referer
+	case bytes.Equal(strContentType, k):
+		return h.ContentType
+	}
+
+	return peekKV(h.h, k)
+}
+
+func (h *RequestHeader) Get(key string) string {
+	return string(h.Peek(key))
 }
 
 func (h *RequestHeader) Read(r *bufio.Reader) error {
@@ -493,6 +539,7 @@ func (h *RequestHeader) parseHeaders(buf []byte) ([]byte, error) {
 			h.ContentLength = -1
 			continue
 		}
+		h.h = setKV(h.h, p.key, p.value)
 	}
 	if p.err != nil {
 		return nil, p.err
@@ -551,6 +598,11 @@ func (h *RequestHeader) Write(w *bufio.Writer) error {
 			return fmt.Errorf("missing required Content-Length header for POST request")
 		}
 		writeContentLength(w, h.ContentLength)
+	}
+
+	for i, n := 0, len(h.h); i < n; i++ {
+		kv := &h.h[i]
+		writeHeaderLine(w, kv.key, kv.value)
 	}
 
 	_, err := w.Write(strCRLF)
@@ -698,6 +750,12 @@ func normalizeHeaderKey(b []byte) {
 			}
 		}
 	}
+}
+
+func getKeyBytes(kv *argsKV, key string) []byte {
+	kv.key = AppendBytesStr(kv.key[:0], key)
+	normalizeHeaderKey(kv.key)
+	return kv.key
 }
 
 // errors
