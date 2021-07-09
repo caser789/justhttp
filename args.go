@@ -224,7 +224,7 @@ func EqualBytesStr(b []byte, s string) bool {
 
 func appendQuotedArg(dst, v []byte) []byte {
 	for _, c := range v {
-		if c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '/' {
+		if c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '/' || c == '.' {
 			dst = append(dst, c)
 		} else {
 			dst = append(dst, '%', hexChar(c>>4), hexChar(c&15))
