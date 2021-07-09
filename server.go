@@ -40,6 +40,11 @@ type Server struct {
 	// Per-connection buffer size for responses' writing.
 	WriteBufferSize int
 
+	// Maximum duration for full request reading (including body).
+	//
+	// By default request read timeout is unlimited.
+	RequestReadTimeout time.Duration
+
 	// Logger.
 	Logger Logger
 
@@ -97,7 +102,7 @@ func (s *Server) serveConn(c io.ReadWriter, ctxP **RequestCtx) error {
 	initRequestCtx(ctx, c)
 	var err error
 	for {
-		if err = ctx.Request.Read(ctx.r); err != nil {
+		if err = ctx.Request.ReadTimeout(ctx.r, s.RequestReadTimeout); err != nil {
 			if err == io.EOF {
 				err = nil
 			}
@@ -111,7 +116,7 @@ func (s *Server) serveConn(c io.ReadWriter, ctxP **RequestCtx) error {
 			ctx = (*RequestCtx)(shadow)
 			*ctxP = ctx
 		}
-		if err = ctx.writeResponse(); err != nil {
+		if err = writeResponse(ctx); err != nil {
 			break
 		}
 		connectionClose := ctx.Response.Header.ConnectionClose
@@ -336,7 +341,7 @@ func (ctx *RequestCtx) TimeoutError(msg string) {
 	}
 }
 
-func (ctx *RequestCtx) writeResponse() error {
+func writeResponse(ctx *RequestCtx) error {
 	if atomic.LoadPointer(&ctx.shadow) != nil {
 		panic("BUG: cannot write response with shadow")
 	}
