@@ -3,6 +3,7 @@ package fasthttp
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"sync/atomic"
@@ -141,7 +142,7 @@ func (h *ResponseHeader) Read(r *bufio.Reader) error {
 		if err == nil {
 			return nil
 		}
-		if !isNeedMoreError(err) {
+		if err != errNeedMore {
 			h.Clear()
 			return err
 		}
@@ -165,7 +166,7 @@ func (h *ResponseHeader) tryRead(r *bufio.Reader, n int) error {
 	b = mustPeekBuffered(r)
 	bLen := len(b)
 	if b, err = h.parse(b); err != nil {
-		if isNeedMoreError(err) && !isEOF {
+		if err == errNeedMore && !isEOF {
 			return err
 		}
 		return fmt.Errorf("erorr when reading response headers: %s", err)
@@ -226,7 +227,7 @@ func (h *ResponseHeader) parseHeaders(buf []byte) ([]byte, error) {
 			if h.ContentLength != -1 {
 				h.ContentLength, err = parseContentLength(p.value)
 				if err != nil {
-					if isNeedMoreError(err) {
+					if err == errNeedMore {
 						return nil, err
 					}
 					return nil, fmt.Errorf("cannot parse Content-Length %q: %s at %q", p.value, err, buf)
@@ -433,7 +434,7 @@ func (h *RequestHeader) Read(r *bufio.Reader) error {
 		if err == nil {
 			return nil
 		}
-		if !isNeedMoreError(err) {
+		if err != errNeedMore {
 			h.Clear()
 			return err
 		}
@@ -457,7 +458,7 @@ func (h *RequestHeader) tryRead(r *bufio.Reader, n int) error {
 	b = mustPeekBuffered(r)
 	bLen := len(b)
 	if b, err = h.parse(b); err != nil {
-		if isNeedMoreError(err) && !isEOF {
+		if err == errNeedMore && !isEOF {
 			return err
 		}
 		return fmt.Errorf("error when reading request headers: %s", err)
@@ -519,7 +520,7 @@ func (h *RequestHeader) parseHeaders(buf []byte) ([]byte, error) {
 			if h.ContentLength != -1 {
 				h.ContentLength, err = parseContentLength(p.value)
 				if err != nil {
-					if isNeedMoreError(err) {
+					if err == errNeedMore {
 						return nil, err
 					}
 					return nil, fmt.Errorf("cannot parse Content-Length %q: %s at %q", p.value, err, buf)
@@ -634,7 +635,7 @@ func mustDiscard(r *bufio.Reader, n int) {
 func nextLine(b []byte) ([]byte, []byte, error) {
 	nNext := bytes.IndexByte(b, '\n')
 	if nNext < 0 {
-		return nil, nil, needMoreError("cannot find lf in the %q", b)
+		return nil, nil, errNeedMore
 	}
 	n := nNext
 	if n > 0 && b[n-1] == '\r' {
@@ -726,22 +727,4 @@ func getHeaderKeyBytes(kv *argsKV, key string) []byte {
 	return kv.key
 }
 
-// errors
-type errNeedMore struct {
-	s string
-}
-
-func (e *errNeedMore) Error() string {
-	return e.s
-}
-
-func needMoreError(format string, args ...interface{}) error {
-	return &errNeedMore{
-		s: "need more data: " + fmt.Sprintf(format, args...),
-	}
-}
-
-func isNeedMoreError(err error) bool {
-	_, ok := err.(*errNeedMore)
-	return ok
-}
+var errNeedMore = errors.New("need more data: cannot find trailing lf")
