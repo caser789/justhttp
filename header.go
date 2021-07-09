@@ -255,6 +255,11 @@ func (h *ResponseHeader) parseHeaders(buf []byte) ([]byte, error) {
 	return p.b, nil
 }
 
+func (h *ResponseHeader) SetBytes(key string, value []byte) {
+	k := getHeaderKeyBytes(&h.bufKV, key)
+	h.set(k, value)
+}
+
 func (h *ResponseHeader) Set(key, value string) {
 	initHeaderKV(&h.bufKV, key, value)
 	h.set(h.bufKV.key, h.bufKV.value)
@@ -355,6 +360,11 @@ func (h *RequestHeader) Clear() {
 	h.ContentLength = 0
 
 	h.h = h.h[:0]
+}
+
+func (h *RequestHeader) SetBytes(key string, value []byte) {
+	k := getHeaderKeyBytes(&h.bufKV, key)
+	h.set(k, value)
 }
 
 func (h *RequestHeader) Set(key, value string) {
