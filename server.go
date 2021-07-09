@@ -309,7 +309,7 @@ func (ctx *ServerCtx) Logger() Logger {
 	return &ctx.logger
 }
 
-func (ctx *ServerCtx) TimeoutError(msg string, statusCode int) {
+func (ctx *ServerCtx) TimeoutError(msg string) {
 	var shadow ServerCtx
 	shadow.Request = Request{}
 	shadow.Response = Response{}
@@ -322,7 +322,7 @@ func (ctx *ServerCtx) TimeoutError(msg string, statusCode int) {
 	shadow.w = ctx.w
 
 	if atomic.CompareAndSwapPointer(&ctx.shadow, nil, unsafe.Pointer(&shadow)) {
-		shadow.Error(msg, statusCode)
+		shadow.Error(msg, StatusRequestTimeout)
 	}
 }
 

@@ -239,5 +239,5 @@ func isSkipResponseBody(statusCode int) bool {
 	if statusCode >= 100 && statusCode < 200 {
 		return true
 	}
-	return statusCode == 204 || statusCode == 304
+	return statusCode == StatusNoContent || statusCode == StatusNotModified
 }

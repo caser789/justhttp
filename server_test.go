@@ -16,10 +16,10 @@ func TestServerTimeoutError(t *testing.T) {
 		Handler: func(ctx *ServerCtx) {
 			go func() {
 				ctx.Success("aaa/bbb", []byte("xxxyyy"))
-				ctx.TimeoutError("ignore this", 1234)
+				ctx.TimeoutError("ignore this")
 			}()
-			ctx.TimeoutError("stolen ctx", 200)
-			ctx.TimeoutError("should be ignored", 123)
+			ctx.TimeoutError("stolen ctx")
+			ctx.TimeoutError("should be ignored")
 		},
 	}
 
@@ -42,8 +42,8 @@ func TestServerTimeoutError(t *testing.T) {
 	}
 
 	br := bufio.NewReader(&rw.w)
-	verifyResponse(t, br, 200, string(defaultContentType), "stolen ctx")
-	verifyResponse(t, br, 200, string(defaultContentType), "stolen ctx")
+	verifyResponse(t, br, StatusRequestTimeout, string(defaultContentType), "stolen ctx")
+	verifyResponse(t, br, StatusRequestTimeout, string(defaultContentType), "stolen ctx")
 
 	data, err := ioutil.ReadAll(br)
 	if err != nil {
