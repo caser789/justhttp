@@ -71,11 +71,18 @@ func refreshServerDate() {
 	serverDate.Store([]byte(s))
 }
 
-// ResponseHeader
+// ResponseHeader represents HTTP response header.
 type ResponseHeader struct {
+	// Set to tru if response contains 'Connection: close' header.
 	ConnectionClose bool
-	StatusCode      int
-	ContentLength   int
+
+	// Response status code.
+	StatusCode int
+
+	// Resposne content length read from Content-Length header.
+	//
+	// It may be negative on chunked response.
+	ContentLength int
 
 	contentType []byte
 	server      []byte
@@ -84,6 +91,7 @@ type ResponseHeader struct {
 	bufKV argsKV
 }
 
+// Clear clears response header.
 func (h *ResponseHeader) Clear() {
 	h.StatusCode = 0
 	h.ContentLength = 0
@@ -95,6 +103,7 @@ func (h *ResponseHeader) Clear() {
 	h.h = h.h[:0]
 }
 
+// Write writs response header to w.
 func (h *ResponseHeader) Write(w *bufio.Writer) error {
 	statusCode := h.StatusCode
 	if statusCode < 0 {
@@ -138,6 +147,7 @@ func (h *ResponseHeader) Write(w *bufio.Writer) error {
 	return err
 }
 
+// Read reads response header from r.
 func (h *ResponseHeader) Read(r *bufio.Reader) error {
 	n := 1
 	for {
@@ -261,11 +271,15 @@ func (h *ResponseHeader) parseHeaders(buf []byte) ([]byte, error) {
 	return p.b, nil
 }
 
+// SetBytes sets the given 'key: value' header.
+//
+// It is safe modifying value buffer after SetBytes return.
 func (h *ResponseHeader) SetBytes(key string, value []byte) {
 	k := getHeaderKeyBytes(&h.bufKV, key)
 	h.set(k, value)
 }
 
+// Set sets the given 'key: value' header.
 func (h *ResponseHeader) Set(key, value string) {
 	initHeaderKV(&h.bufKV, key, value)
 	h.set(h.bufKV.key, h.bufKV.value)
@@ -322,10 +336,17 @@ func (h *ResponseHeader) setBytes(key, value []byte) {
 	h.h = append(h.h, kv)
 }
 
+// Get returns header value for the given key.
+//
+// Get allocates memory on each call, so prefer using Peek instead.
 func (h *ResponseHeader) Get(key string) string {
 	return string(h.Peek(key))
 }
 
+// Peek returns header value for the given key.
+//
+// Returned value may change on the next call to ResponseHeader.
+// Do not store references to returned value. Make copies instead.
 func (h *ResponseHeader) Peek(key string) []byte {
 	k := getHeaderKeyBytes(&h.bufKV, key)
 	return h.peek(k)
@@ -347,10 +368,17 @@ func (h *ResponseHeader) peek(key []byte) []byte {
 	}
 }
 
-// RequestHeader
+// RequestHeader represents HTTP request header.
 type RequestHeader struct {
-	Method        []byte
-	RequestURI    []byte
+	// Request method (e.g. 'GET', 'POST', etc.).
+	Method []byte
+
+	// Request URI read from the first request line.
+	RequestURI []byte
+
+	// Request content length read from Content-Length header.
+	//
+	// It may be negative on chunked request.
 	ContentLength int
 
 	host        []byte
@@ -360,18 +388,22 @@ type RequestHeader struct {
 	bufKV argsKV
 }
 
+// IsMethodGet returns true if request method is GET.
 func (h *RequestHeader) IsMethodGet() bool {
 	return bytes.Equal(h.Method, strGet)
 }
 
+// IsMethodPost returns true if request method is POST.
 func (h *RequestHeader) IsMethodPost() bool {
 	return bytes.Equal(h.Method, strPost)
 }
 
+// IsMethodHead returns true if request method is HEAD.
 func (h *RequestHeader) IsMethodHead() bool {
 	return bytes.Equal(h.Method, strHead)
 }
 
+// Clear clears request header
 func (h *RequestHeader) Clear() {
 	h.Method = h.Method[:0]
 	h.RequestURI = h.RequestURI[:0]
@@ -383,11 +415,15 @@ func (h *RequestHeader) Clear() {
 	h.h = h.h[:0]
 }
 
+// SetBytes sets the given 'key: value' header.
+//
+// It is safe modifying value buffer after SetBytes return.
 func (h *RequestHeader) SetBytes(key string, value []byte) {
 	k := getHeaderKeyBytes(&h.bufKV, key)
 	h.set(k, value)
 }
 
+// Set sets the given 'key: value' header.
 func (h *RequestHeader) Set(key, value string) {
 	initHeaderKV(&h.bufKV, key, value)
 	h.set(h.bufKV.key, h.bufKV.value)
@@ -410,6 +446,10 @@ func (h *RequestHeader) set(key, value []byte) {
 	}
 }
 
+// Peek returns header value for the given key.
+//
+// Returned value may change on the next call to RequestHeader.
+// Do not store references to returned value. Make copies instead.
 func (h *RequestHeader) Peek(key string) []byte {
 	k := getHeaderKeyBytes(&h.bufKV, key)
 	return h.peek(k)
@@ -426,10 +466,14 @@ func (h *RequestHeader) peek(key []byte) []byte {
 	}
 }
 
+// Get returns header value for the given key.
+//
+// Get allocates memory on each call, so prefer using Peek instead.
 func (h *RequestHeader) Get(key string) string {
 	return string(h.Peek(key))
 }
 
+// Read reads request header from r.
 func (h *RequestHeader) Read(r *bufio.Reader) error {
 	n := 1
 	for {
@@ -558,6 +602,7 @@ func (h *RequestHeader) parseHeaders(buf []byte) ([]byte, error) {
 	return p.b, nil
 }
 
+// Write writes request header to w.
 func (h *RequestHeader) Write(w *bufio.Writer) error {
 	method := h.Method
 	if len(method) == 0 {
