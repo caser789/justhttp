@@ -164,7 +164,7 @@ func readBodyFixedSize(r *bufio.Reader, n int, buf []byte) ([]byte, error) {
 	bufLen := len(buf)
 	bufCap := bufLen + n
 	if cap(buf) < bufCap {
-		b := make([]byte, bufLen, bufCap)
+		b := make([]byte, bufLen, round2(bufCap))
 		copy(b, buf)
 		buf = b
 	}
@@ -349,3 +349,16 @@ func isSkipResponseBody(statusCode int) bool {
 // ErrReadTimeout may be returned from Request.ReadTimeout
 // or Response.ReadTimeout on timeout.
 var ErrReadTimeout = errors.New("read timeout")
+
+func round2(n int) int {
+	if n <= 0 {
+		return 0
+	}
+	n--
+	x := uint(0)
+	for n > 0 {
+		n >>= 1
+		x++
+	}
+	return 1 << x
+}
