@@ -393,6 +393,10 @@ func (rw *readWriter) Write(b []byte) (int, error) {
 	return rw.w.Write(b)
 }
 
+func (rw *readWriter) Close() error {
+	return nil
+}
+
 func verifyResponse(t *testing.T, r *bufio.Reader, expectedStatusCode int, expectedContentType, expectedBody string) {
 	var resp Response
 	if err := resp.Read(r); err != nil {
@@ -406,7 +410,7 @@ func verifyResponse(t *testing.T, r *bufio.Reader, expectedStatusCode int, expec
 }
 
 type readWriterRemoteAddr struct {
-	rw   io.ReadWriter
+	rw   io.ReadWriteCloser
 	addr net.Addr
 }
 
@@ -420,4 +424,8 @@ func (rw *readWriterRemoteAddr) Write(b []byte) (int, error) {
 
 func (rw *readWriterRemoteAddr) RemoteAddr() net.Addr {
 	return rw.addr
+}
+
+func (rw *readWriterRemoteAddr) Close() error {
+	return rw.rw.Close()
 }
