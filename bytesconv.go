@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"sync"
+	"unsafe"
 )
 
 var (
@@ -191,4 +192,12 @@ func lowercaseBytes(b []byte) {
 	for i, n := 0, len(b); i < n; i++ {
 		lowercaseByte(&b[i])
 	}
+}
+
+// Converts byte slice to a string without memory allocation.
+//
+// Note it may break if string and/or slice header will change
+// in the future go versions.
+func unsafeBytesToStr(b []byte) string {
+    return *(*string)(unsafe.Pointer(&b))
 }
