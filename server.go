@@ -114,7 +114,10 @@ type Server struct {
 
 	perIPConnCounter perIPConnCounter
 	serverName       atomic.Value
-	ctxPool          sync.Pool
+
+	ctxPool     sync.Pool
+	readersPool sync.Pool
+	writersPool sync.Pool
 }
 
 const defaultConcurrency = 64 * 1024
@@ -171,16 +174,6 @@ func (s *Server) logger() Logger {
 // ServeConn returns nil if all requests from the c are successfully served.
 // It returns non-nil error otherwise.
 func (s *Server) ServeConn(c io.ReadWriter) error {
-	ctx := s.acquireCtx()
-	err := s.serveConn(c, &ctx)
-	s.releaseCtx(ctx)
-	return err
-}
-
-func (s *Server) serveConn(c io.ReadWriter, ctxP **RequestCtx) error {
-	ctx := *ctxP
-	initCtx(ctx, c)
-
 	var rd readDeadliner
 	readTimeout := s.ReadTimeout
 	if readTimeout > 0 {
@@ -193,18 +186,64 @@ func (s *Server) serveConn(c io.ReadWriter, ctxP **RequestCtx) error {
 		wd, _ = c.(writeDeadliner)
 	}
 
+	ctx := s.acquireCtx(c)
+	var br *bufio.Reader
+	var bw *bufio.Writer
+	var dt time.Duration
+	var prevReadTime time.Time
+
 	var err error
 	for {
 		if rd != nil {
 			if err = rd.SetReadDeadline(time.Now().Add(readTimeout)); err != nil {
 				break
 			}
-			err = ctx.Request.Read(ctx.r)
+			if dt < time.Second || br != nil {
+				if br == nil {
+					br = acquireReader(ctx)
+				}
+				err = ctx.Request.Read(br)
+				if br.Buffered() == 0 || err != nil {
+					releaseReader(ctx, br)
+					br = nil
+				}
+			} else {
+				ctx, br, err = acquireByteReader(ctx)
+				if err == nil {
+					err = ctx.Request.Read(br)
+					if br.Buffered() == 0 || err != nil {
+						releaseReader(ctx, br)
+						br = nil
+					}
+				}
+			}
 		} else {
-			if err = ctx.Request.ReadTimeout(ctx.r, readTimeout); err == ErrReadTimeout {
-				// ctx.Requests cannot be used after ErrReadTimeout, so create ctx shadow.
-				*ctxP = makeShadow(ctx)
-				break
+			if dt < time.Second || br != nil {
+				if br == nil {
+					br = acquireReader(ctx)
+				}
+				if err = ctx.Request.ReadTimeout(br, readTimeout); err == ErrReadTimeout {
+					// ctx.Request and br cannot be used after ErrReadTimeout.
+					ctx = makeCtxShadow(ctx)
+					break
+				}
+				if br.Buffered() == 0 {
+					releaseReader(ctx, br)
+					br = nil
+				}
+			} else {
+				ctx, br, err = acquireByteReader(ctx)
+				if err == nil {
+					if err = ctx.Request.ReadTimeout(br, readTimeout); err == ErrReadTimeout {
+						// ctx.Request and br cannot be used after ErrReadTimeout.
+						ctx = makeCtxShadow(ctx)
+						break
+					}
+					if br.Buffered() == 0 || err != nil {
+						releaseReader(ctx, br)
+						br = nil
+					}
+				}
 			}
 		}
 		if err != nil {
@@ -213,6 +252,10 @@ func (s *Server) serveConn(c io.ReadWriter, ctxP **RequestCtx) error {
 			}
 			break
 		}
+
+		dt = time.Since(prevReadTime)
+		prevReadTime = time.Now()
+
 		ctx.ID++
 		ctx.Time = time.Now()
 		ctx.Response.Clear()
@@ -220,22 +263,27 @@ func (s *Server) serveConn(c io.ReadWriter, ctxP **RequestCtx) error {
 		shadow := ctx.shadow
 		if shadow != nil {
 			ctx = shadow
-			*ctxP = ctx
 		}
 		if wd != nil {
 			if err = wd.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
 				break
 			}
 		}
-		if err = writeResponse(ctx); err != nil {
+		if bw == nil {
+			bw = acquireWriter(ctx)
+		}
+		if err = writeResponse(ctx, bw); err != nil {
 			break
 		}
 		connectionClose := ctx.Response.Header.ConnectionClose
 
 		trimBigBuffers(ctx)
 
-		if ctx.r.Buffered() == 0 || connectionClose {
-			if err = ctx.w.Flush(); err != nil {
+		if br == nil || connectionClose {
+			err = bw.Flush()
+			releaseWriter(ctx, bw)
+			bw = nil
+			if err != nil {
 				break
 			}
 			if connectionClose {
@@ -244,15 +292,23 @@ func (s *Server) serveConn(c io.ReadWriter, ctxP **RequestCtx) error {
 		}
 	}
 
+	if br != nil {
+		releaseReader(ctx, br)
+	}
+	if bw != nil {
+		releaseWriter(ctx, bw)
+	}
+
 	if err != nil && !strings.Contains(err.Error(), "connection reset by peer") {
 		ctx.Logger().Printf("Error when serving network connection: %s", err)
 	}
+	s.releaseCtx(ctx)
 	return err
 }
 
 var globalCtxID uint64
 
-func (s *Server) acquireCtx() *RequestCtx {
+func (s *Server) acquireCtx(c io.ReadWriter) *RequestCtx {
 	v := s.ctxPool.Get()
 	var ctx *RequestCtx
 	if v == nil {
@@ -266,6 +322,7 @@ func (s *Server) acquireCtx() *RequestCtx {
 		ctx = v.(*RequestCtx)
 	}
 	ctx.ID = (atomic.AddUint64(&globalCtxID, 1)) << 32
+	ctx.c = c
 	return ctx
 }
 
@@ -274,12 +331,7 @@ func (s *Server) releaseCtx(ctx *RequestCtx) {
 		panic("BUG: cannot release RequestCtx with shadow")
 	}
 	ctx.c = nil
-	if ctx.r != nil {
-		ctx.r.Reset(nil)
-	}
-	if ctx.w != nil {
-		ctx.w.Reset(nil)
-	}
+	ctx.fbr.c = nil
 	s.ctxPool.Put(ctx.v)
 }
 
@@ -331,8 +383,6 @@ func connWorkersMonitor(s *Server, ch <-chan net.Conn, maxWorkers int, stopCh <-
 }
 
 func connWorker(s *Server, ch <-chan net.Conn) {
-	ctx := s.acquireCtx()
-
 	var c net.Conn
 	defer func() {
 		if r := recover(); r != nil {
@@ -354,11 +404,10 @@ func connWorker(s *Server, ch <-chan net.Conn) {
 				stopTimer(tc)
 			case <-tc.C:
 				stopTimer(tc)
-				s.releaseCtx(ctx)
 				return
 			}
 		}
-		s.serveConn(c, &ctx)
+		s.ServeConn(c)
 		c.Close()
 		c = nil
 	}
@@ -435,8 +484,7 @@ type RequestCtx struct {
 	logger ctxLogger
 	s      *Server
 	c      io.ReadWriter
-	r      *bufio.Reader
-	w      *bufio.Writer
+	fbr    firstByteReader
 
 	// shadow is set by TimeoutError().
 	shadow *RequestCtx
@@ -512,14 +560,14 @@ func (ctx *RequestCtx) Logger() Logger {
 // TimouetError MUST be called before returning from RequestsHandler if there are
 // references to ctx and/or its members in other goroutines.
 func (ctx *RequestCtx) TimeoutError(msg string) {
-	shadow := makeShadow(ctx)
+	shadow := makeCtxShadow(ctx)
 	if ctx.shadow == nil {
 		ctx.shadow = shadow
 		shadow.Error(msg, StatusRequestTimeout)
 	}
 }
 
-func writeResponse(ctx *RequestCtx) error {
+func writeResponse(ctx *RequestCtx, w *bufio.Writer) error {
 	if ctx.shadow != nil {
 		panic("BUG: cannot write response with shadow")
 	}
@@ -528,7 +576,7 @@ func writeResponse(ctx *RequestCtx) error {
 	if len(serverOld) == 0 {
 		h.server = ctx.s.getServerName()
 	}
-	err := ctx.Response.Write(ctx.w)
+	err := ctx.Response.Write(w)
 	if len(serverOld) == 0 {
 		h.server = serverOld
 	}
@@ -562,26 +610,81 @@ func (cl *ctxLogger) Printf(format string, args ...interface{}) {
 	ctxLoggerLock.Unlock()
 }
 
-func initCtx(ctx *RequestCtx, c io.ReadWriter) {
-	if ctx.r == nil {
-		readBufferSize := ctx.s.ReadBufferSize
-		if readBufferSize <= 0 {
-			readBufferSize = 4096
-		}
-		writeBufferSize := ctx.s.WriteBufferSize
-		if writeBufferSize <= 0 {
-			writeBufferSize = 4096
-		}
-		ctx.r = bufio.NewReaderSize(c, readBufferSize)
-		ctx.w = bufio.NewWriterSize(c, writeBufferSize)
-	} else {
-		ctx.r.Reset(c)
-		ctx.w.Reset(c)
+const (
+	defaultReadBufferSize  = 4096
+	defaultWriteBufferSize = 4096
+)
+
+var bytePool sync.Pool
+
+func acquireByteReader(ctx *RequestCtx) (*RequestCtx, *bufio.Reader, error) {
+	s := ctx.s
+	c := ctx.c
+	s.releaseCtx(ctx)
+
+	v := bytePool.Get()
+	if v == nil {
+		v = make([]byte, 1)
 	}
-	ctx.c = c
+	b := v.([]byte)
+	n, err := c.Read(b)
+	ch := b[0]
+	bytePool.Put(v)
+	ctx = s.acquireCtx(c)
+	if err != nil {
+		return ctx, nil, err
+	}
+	if n != 1 {
+		panic("BUG: Reader must return at least one byte")
+	}
+
+	ctx.fbr.c = c
+	ctx.fbr.ch = ch
+	ctx.fbr.byteRead = false
+	r := acquireReader(ctx)
+	r.Reset(&ctx.fbr)
+	return ctx, r, nil
 }
 
-func makeShadow(ctx *RequestCtx) *RequestCtx {
+func acquireReader(ctx *RequestCtx) *bufio.Reader {
+	v := ctx.s.readersPool.Get()
+	if v == nil {
+		n := ctx.s.ReadBufferSize
+		if n <= 0 {
+			n = defaultReadBufferSize
+		}
+		return bufio.NewReaderSize(ctx.c, n)
+	}
+	r := v.(*bufio.Reader)
+	r.Reset(ctx.c)
+	return r
+}
+
+func releaseReader(ctx *RequestCtx, r *bufio.Reader) {
+	r.Reset(nil)
+	ctx.s.readersPool.Put(r)
+}
+
+func acquireWriter(ctx *RequestCtx) *bufio.Writer {
+	v := ctx.s.writersPool.Get()
+	if v == nil {
+		n := ctx.s.WriteBufferSize
+		if n <= 0 {
+			n = defaultWriteBufferSize
+		}
+		return bufio.NewWriterSize(ctx.c, n)
+	}
+	w := v.(*bufio.Writer)
+	w.Reset(ctx.c)
+	return w
+}
+
+func releaseWriter(ctx *RequestCtx, w *bufio.Writer) {
+	w.Reset(nil)
+	ctx.s.writersPool.Put(w)
+}
+
+func makeCtxShadow(ctx *RequestCtx) *RequestCtx {
 	var shadow RequestCtx
 	shadow.Request = Request{}
 	shadow.Response = Response{}
@@ -590,7 +693,26 @@ func makeShadow(ctx *RequestCtx) *RequestCtx {
 
 	shadow.s = ctx.s
 	shadow.c = ctx.c
-	shadow.r = ctx.r
-	shadow.w = ctx.w
 	return &shadow
+}
+
+type firstByteReader struct {
+	c        io.ReadWriter
+	ch       byte
+	byteRead bool
+}
+
+func (r *firstByteReader) Read(b []byte) (int, error) {
+	if len(b) == 0 {
+		return 0, nil
+	}
+	nn := 0
+	if !r.byteRead {
+		b[0] = r.ch
+		b = b[1:]
+		r.byteRead = true
+		nn = 1
+	}
+	n, err := r.c.Read(b)
+	return n + nn, err
 }
