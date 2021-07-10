@@ -102,7 +102,7 @@ func testRequestWriteError(t *testing.T, method, requestURI, host, userAgent, bo
 }
 
 func TestRequestReadTimeout(t *testing.T) {
-	var req Request
+	req := &Request{}
 
 	for i := 0; i < 5; i++ {
 		testRequestReadTimeoutError(t, &req)
@@ -121,16 +121,17 @@ func TestRequestReadTimeout(t *testing.T) {
 	}
 }
 
-func testRequestReadTimeoutError(t *testing.T, req *Request) {
+func testRequestReadTimeoutError(t *testing.T, req **Request) {
 	r, _ := io.Pipe()
 	rb := bufio.NewReader(r)
-	err := req.ReadTimeout(rb, 5*time.Millisecond)
+	err := (*req).ReadTimeout(rb, 5*time.Millisecond)
 	if err == nil {
 		t.Fatalf("expecting error")
 	}
 	if err != ErrReadTimeout {
 		t.Fatalf("unexpected error: %s. expecting %s", err, ErrReadTimeout)
 	}
+	*req = &Request{}
 }
 
 func TestRequestParseURI(t *testing.T) {
@@ -253,7 +254,7 @@ func TestResponseReadWithoutBody(t *testing.T) {
 }
 
 func TestResponseReadTimeout(t *testing.T) {
-	var resp Response
+	resp := &Response{}
 
 	for i := 0; i < 5; i++ {
 		testResponseReadTimeoutError(t, &resp)
@@ -272,16 +273,17 @@ func TestResponseReadTimeout(t *testing.T) {
 	}
 }
 
-func testResponseReadTimeoutError(t *testing.T, resp *Response) {
+func testResponseReadTimeoutError(t *testing.T, resp **Response) {
 	r, _ := io.Pipe()
 	rb := bufio.NewReader(r)
-	err := resp.ReadTimeout(rb, 5*time.Millisecond)
+	err := (*resp).ReadTimeout(rb, 5*time.Millisecond)
 	if err == nil {
 		t.Fatalf("expecting error")
 	}
 	if err != ErrReadTimeout {
 		t.Fatalf("unexpected error: %s. Expecting %s", err, ErrReadTimeout)
 	}
+	*resp = &Response{}
 }
 
 func testResponseReadWithoutBody(t *testing.T, resp *Response, s string, skipBody bool,

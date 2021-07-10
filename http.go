@@ -98,7 +98,8 @@ func (req *Request) Read(r *bufio.Reader) error {
 // the given timeout.
 //
 // If request couldnt' be read during the given timeout,
-// it returns ErrReadTimeout.
+// ErrReadTimeout is returned
+// Request can no longer be used after ErrReadTimeout error.
 func (req *Request) ReadTimeout(r *bufio.Reader, timeout time.Duration) error {
 	if timeout <= 0 {
 		return req.Read(r)
@@ -290,7 +291,8 @@ func (resp *Response) Read(r *bufio.Reader) error {
 // the given timeout.
 //
 // If response coundn't be read during the given timeout,
-// it returns ErrReadTimeout.
+// ErrReadTimeout is returned.
+// Response can no longer be used after ErrReadTimeout error.
 func (resp *Response) ReadTimeout(r *bufio.Reader, timeout time.Duration) error {
 	if timeout <= 0 {
 		return resp.Read(r)

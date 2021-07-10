@@ -13,7 +13,6 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
-	"unsafe"
 )
 
 type readDeadliner interface {
@@ -192,7 +191,11 @@ func (s *Server) serveConn(c io.ReadWriter, ctxP **RequestCtx) error {
 			}
 			err = ctx.Request.Read(ctx.r)
 		} else {
-			err = ctx.Request.ReadTimeout(ctx.r, readTimeout)
+			if err = ctx.Request.ReadTimeout(ctx.r, readTimeout); err == ErrReadTimeout {
+				// ctx.Requests cannot be used after ErrReadTimeout, so create ctx shadow.
+				*ctxP = makeShadow(ctx)
+				break
+			}
 		}
 		if err != nil {
 			if err == io.EOF {
@@ -203,9 +206,9 @@ func (s *Server) serveConn(c io.ReadWriter, ctxP **RequestCtx) error {
 		ctx.ID++
 		ctx.Time = time.Now()
 		s.Handler(ctx)
-		shadow := atomic.LoadPointer(&ctx.shadow)
+		shadow := ctx.shadow
 		if shadow != nil {
-			ctx = (*RequestCtx)(shadow)
+			ctx = shadow
 			*ctxP = ctx
 		}
 		if wd != nil {
@@ -257,7 +260,7 @@ func (s *Server) acquireCtx() *RequestCtx {
 }
 
 func (s *Server) releaseCtx(ctx *RequestCtx) {
-	if atomic.LoadPointer(&ctx.shadow) != nil {
+	if ctx.shadow != nil {
 		panic("BUG: cannot release RequestCtx with shadow")
 	}
 	ctx.c = nil
@@ -395,7 +398,9 @@ type RequestCtx struct {
 	c      io.ReadWriter
 	r      *bufio.Reader
 	w      *bufio.Writer
-	shadow unsafe.Pointer
+
+	// shadow is set by TimeoutError().
+	shadow *RequestCtx
 
 	timeoutCh    chan struct{}
 	timeoutTimer *time.Timer
@@ -464,24 +469,15 @@ func (ctx *RequestCtx) Logger() Logger {
 // TimouetError MUST be called before returning from RequestsHandler if there are
 // references to ctx and/or its members in other goroutines.
 func (ctx *RequestCtx) TimeoutError(msg string) {
-	var shadow RequestCtx
-	shadow.Request = Request{}
-	shadow.Response = Response{}
-	shadow.logger.ctx = &shadow
-	shadow.v = &shadow
-
-	shadow.s = ctx.s
-	shadow.c = ctx.c
-	shadow.r = ctx.r
-	shadow.w = ctx.w
-
-	if atomic.CompareAndSwapPointer(&ctx.shadow, nil, unsafe.Pointer(&shadow)) {
+	shadow := makeShadow(ctx)
+	if ctx.shadow == nil {
+		ctx.shadow = shadow
 		shadow.Error(msg, StatusRequestTimeout)
 	}
 }
 
 func writeResponse(ctx *RequestCtx) error {
-	if atomic.LoadPointer(&ctx.shadow) != nil {
+	if ctx.shadow != nil {
 		panic("BUG: cannot write response with shadow")
 	}
 	h := &ctx.Response.Header
@@ -540,4 +536,18 @@ func initRequestCtx(ctx *RequestCtx, c io.ReadWriter) {
 		ctx.w.Reset(c)
 	}
 	ctx.c = c
+}
+
+func makeShadow(ctx *RequestCtx) *RequestCtx {
+	var shadow RequestCtx
+	shadow.Request = Request{}
+	shadow.Response = Response{}
+	shadow.logger.ctx = &shadow
+	shadow.v = &shadow
+
+	shadow.s = ctx.s
+	shadow.c = ctx.c
+	shadow.r = ctx.r
+	shadow.w = ctx.w
+	return &shadow
 }
