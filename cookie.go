@@ -36,7 +36,7 @@ type Cookie struct {
 	Path []byte
 
 	bufKV argsKV
-    buf []byte
+	buf   []byte
 }
 
 var zeroTime time.Time
@@ -79,8 +79,8 @@ var errNoCookies = errors.New("no cookies found")
 
 // Parse parses Set-Cookie header.
 func (c *Cookie) Parse(src string) error {
-    c.buf = AppendBytesStr(c.buf[:0], src)
-    return c.ParseBytes(c.buf)
+	c.buf = AppendBytesStr(c.buf[:0], src)
+	return c.ParseBytes(c.buf)
 }
 
 // ParseBytes parses Set-Cookie header
@@ -171,31 +171,31 @@ func (s *cookieScanner) next(kv *argsKV, decode bool) bool {
 		return false
 	}
 
-    isKey := true
-    k := 0
-    for i, c := range s.b {
-        switch c {
-        case '=':
-            if isKey {
-                isKey = false
-                kv.key = decodeCookieArg(kv.key, s.b[:i], decode)
-                k = i + 1
-            }
-        case ';':
-            if isKey {
-                kv.key = kv.key[:0]
-            }
-            kv.value = decodeCookieArg(kv.value, s.b[k:i], decode)
-            s.b = s.b[i+1:]
-            return true
-        }
-    }
+	isKey := true
+	k := 0
+	for i, c := range s.b {
+		switch c {
+		case '=':
+			if isKey {
+				isKey = false
+				kv.key = decodeCookieArg(kv.key, s.b[:i], decode)
+				k = i + 1
+			}
+		case ';':
+			if isKey {
+				kv.key = kv.key[:0]
+			}
+			kv.value = decodeCookieArg(kv.value, s.b[k:i], decode)
+			s.b = s.b[i+1:]
+			return true
+		}
+	}
 
-    if isKey {
+	if isKey {
 		kv.key = kv.key[:0]
 	}
 	kv.value = decodeCookieArg(kv.value, s.b[k:], decode)
-    s.b = s.b[len(s.b):]
+	s.b = s.b[len(s.b):]
 	return true
 }
 
@@ -207,7 +207,7 @@ func decodeCookieArg(dst, src []byte, decode bool) []byte {
 		src = src[:len(src)-1]
 	}
 	if !decode {
-        return append(dst[:0], src...)
+		return append(dst[:0], src...)
 	}
-    return decodeArg(dst[:0], src, true)
+	return decodeArg(dst[:0], src, true)
 }
