@@ -72,6 +72,9 @@ func refreshServerDate() {
 }
 
 // ResponseHeader represents HTTP response header.
+//
+// It is forbidden copying ResponseHeader instances.
+// Create new instances instead and use CopyTo.
 type ResponseHeader struct {
 	// Set to tru if response contains 'Connection: close' header.
 	ConnectionClose bool
@@ -89,6 +92,71 @@ type ResponseHeader struct {
 
 	h     []argsKV
 	bufKV argsKV
+}
+
+// SetBytesK sets the given 'key: value' header.
+//
+// It is safe modifying key buffer after SetBytesK return.
+func (h *ResponseHeader) SetBytesK(key []byte, value string) {
+	h.bufKV.value = AppendBytesStr(h.bufKV.value[:0], value)
+	h.SetBytesKV(key, h.bufKV.value)
+}
+
+// SetBytesV sets the given 'key: value' header.
+//
+// It is safe modifying value buffer after SetBytesV return.
+func (h *ResponseHeader) SetBytesV(key string, value []byte) {
+	k := getHeaderKeyBytes(&h.bufKV, key)
+	h.set(k, value)
+}
+
+// SetBytesKV sets the given 'key: value' header.
+//
+// It is safe modifying key and value buffers after SetBytesKV return.
+func (h *ResponseHeader) SetBytesKV(key, value []byte) {
+	h.bufKV.key = append(h.bufKV.key[:0], key...)
+	normalizeHeaderKey(h.bufKV.key)
+	h.set(h.bufKV.key, value)
+}
+
+// Del deletes header with the given key.
+func (h *ResponseHeader) Del(key string) {
+	k := getHeaderKeyBytes(&h.bufKV, key)
+	h.h = delArg(h.h, k)
+}
+
+// DelBytes deletes header with the given key.
+func (h *ResponseHeader) DelBytes(key []byte) {
+	h.bufKV.key = append(h.bufKV.key[:0], key...)
+	normalizeHeaderKey(h.bufKV.key)
+	h.h = delArg(h.h, h.bufKV.key)
+}
+
+// CopyTo copies all the headers to dst.
+func (h *ResponseHeader) CopyTo(dst *ResponseHeader) {
+	dst.StatusCode = h.StatusCode
+	dst.ContentLength = h.ContentLength
+	dst.ConnectionClose = h.ConnectionClose
+	dst.contentType = append(dst.contentType[:0], h.contentType...)
+	dst.server = append(dst.server[:0], h.server...)
+	dst.h = copyArgs(dst.h, h.h)
+}
+
+// VisitAll calls f for each header except Content-Length.
+//
+// f must not retain references to key and/or value after returning.
+// Copy key and/or value contents before returning if you need retaining them.
+func (h *ResponseHeader) VisitAll(f func(key, value []byte)) {
+	if len(h.contentType) > 0 {
+		f(strContentType, h.contentType)
+	}
+	if len(h.server) > 0 {
+		f(strServer, h.server)
+	}
+	if h.ConnectionClose {
+		f(strConnection, strClose)
+	}
+	visitArgs(h.h, f)
 }
 
 // Clear clears response header.
@@ -255,7 +323,7 @@ func (h *ResponseHeader) parseHeaders(buf []byte) ([]byte, error) {
 				h.ConnectionClose = true
 			}
 		default:
-			h.h = setKV(h.h, p.key, p.value)
+			h.h = setArg(h.h, p.key, p.value)
 		}
 	}
 	if p.err != nil {
@@ -271,12 +339,10 @@ func (h *ResponseHeader) parseHeaders(buf []byte) ([]byte, error) {
 	return p.b, nil
 }
 
-// SetBytes sets the given 'key: value' header.
-//
-// It is safe modifying value buffer after SetBytes return.
-func (h *ResponseHeader) SetBytes(key string, value []byte) {
-	k := getHeaderKeyBytes(&h.bufKV, key)
-	h.set(k, value)
+// Set sets the given 'key: value' header.
+func (h *RequestHeader) Set(key, value string) {
+	initHeaderKV(&h.bufKV, key, value)
+	h.set(h.bufKV.key, h.bufKV.value)
 }
 
 // Set sets the given 'key: value' header.
@@ -303,13 +369,16 @@ func (h *ResponseHeader) set(key, value []byte) {
 	case bytes.Equal(strDate, key):
 		// Date is managed automatically
 	default:
-		h.h = setKV(h.h, key, value)
+		h.h = setArg(h.h, key, value)
 	}
 }
 
-func (h *ResponseHeader) setStr(key []byte, value string) {
+// SetBytesK sets the given 'key: value' header.
+//
+// It is safe modifying key buffer after SetBytesK return.
+func (h *RequestHeader) SetBytesK(key []byte, value string) {
 	h.bufKV.value = AppendBytesStr(h.bufKV.value[:0], value)
-	h.set(key, h.bufKV.value)
+	h.SetBytesKV(key, h.bufKV.value)
 }
 
 func (h *ResponseHeader) setBytes(key, value []byte) {
@@ -343,13 +412,30 @@ func (h *ResponseHeader) Get(key string) string {
 	return string(h.Peek(key))
 }
 
+// GetBytes returns header value for the given key.
+//
+// GetBytes allocates memory on each call, so prefer using PeekBytes instead.
+func (h *ResponseHeader) GetBytes(key []byte) string {
+	return string(h.PeekBytes(key))
+}
+
 // Peek returns header value for the given key.
 //
-// Returned value may change on the next call to ResponseHeader.
+// Returned value is valid until the next call to ResponseHeader.
 // Do not store references to returned value. Make copies instead.
 func (h *ResponseHeader) Peek(key string) []byte {
 	k := getHeaderKeyBytes(&h.bufKV, key)
 	return h.peek(k)
+}
+
+// PeekBytes returns header value for the given key.
+//
+// Returned value is valid until the next call to ResponseHeader.
+// Do not store references to returned value. Make copies instead.
+func (h *ResponseHeader) PeekBytes(key []byte) []byte {
+	h.bufKV.key = append(h.bufKV.key[:0], key...)
+	normalizeHeaderKey(h.bufKV.key)
+	return h.peek(h.bufKV.key)
 }
 
 func (h *ResponseHeader) peek(key []byte) []byte {
@@ -364,11 +450,14 @@ func (h *ResponseHeader) peek(key []byte) []byte {
 		}
 		return nil
 	default:
-		return peekKV(h.h, key)
+		return peekArg(h.h, key)
 	}
 }
 
 // RequestHeader represents HTTP request header.
+//
+// It is forbidden copying RequestHeader instances.
+// Create new instances instead and use CopyTo.
 type RequestHeader struct {
 	// Request method (e.g. 'GET', 'POST', etc.).
 	Method []byte
@@ -386,6 +475,43 @@ type RequestHeader struct {
 
 	h     []argsKV
 	bufKV argsKV
+}
+
+// Del deletes header with the given key.
+func (h *RequestHeader) Del(key string) {
+	k := getHeaderKeyBytes(&h.bufKV, key)
+	h.h = delArg(h.h, k)
+}
+
+// DelBytes deletes header with the given key.
+func (h *RequestHeader) DelBytes(key []byte) {
+	h.bufKV.key = append(h.bufKV.key[:0], key...)
+	normalizeHeaderKey(h.bufKV.key)
+	h.h = delArg(h.h, h.bufKV.key)
+}
+
+// VisitAll calls f for each header except Conten-Length.
+//
+// f must not retain references to key and/or value after returning.
+// Copy key and/or value contents before returning if you need retaining them.
+func (h *RequestHeader) VisitAll(f func(key, value []byte)) {
+	if len(h.host) > 0 {
+		f(strHost, h.host)
+	}
+	if len(h.contentType) > 0 {
+		f(strContentType, h.contentType)
+	}
+	visitArgs(h.h, f)
+}
+
+// CopyTo copies all the headers to dst.
+func (h *RequestHeader) CopyTo(dst *RequestHeader) {
+	dst.Method = append(dst.Method[:0], h.Method...)
+	dst.RequestURI = append(dst.RequestURI[:0], h.RequestURI...)
+	dst.ContentLength = h.ContentLength
+	dst.host = append(dst.host[:0], h.host...)
+	dst.contentType = append(dst.contentType[:0], h.contentType...)
+	dst.h = copyArgs(dst.h, h.h)
 }
 
 // IsMethodGet returns true if request method is GET.
@@ -415,18 +541,21 @@ func (h *RequestHeader) Clear() {
 	h.h = h.h[:0]
 }
 
-// SetBytes sets the given 'key: value' header.
+// SetBytesV sets the given 'key: value' header.
 //
-// It is safe modifying value buffer after SetBytes return.
-func (h *RequestHeader) SetBytes(key string, value []byte) {
+// It is safe modifying value buffer after SetBytesV return.
+func (h *RequestHeader) SetBytesV(key string, value []byte) {
 	k := getHeaderKeyBytes(&h.bufKV, key)
 	h.set(k, value)
 }
 
-// Set sets the given 'key: value' header.
-func (h *RequestHeader) Set(key, value string) {
-	initHeaderKV(&h.bufKV, key, value)
-	h.set(h.bufKV.key, h.bufKV.value)
+// SetBytesKV sets the given 'key: value' header.
+//
+// It is safe modifying key and value buffers after SetBytesKV return.
+func (h *RequestHeader) SetBytesKV(key, value []byte) {
+	h.bufKV.key = append(h.bufKV.key[:0], key...)
+	normalizeHeaderKey(h.bufKV.key)
+	h.set(h.bufKV.key, value)
 }
 
 func (h *RequestHeader) set(key, value []byte) {
@@ -442,17 +571,27 @@ func (h *RequestHeader) set(key, value []byte) {
 	case bytes.Equal(strConnection, key):
 		// Connection is managed automatically
 	default:
-		h.h = setKV(h.h, key, value)
+		h.h = setArg(h.h, key, value)
 	}
 }
 
 // Peek returns header value for the given key.
 //
-// Returned value may change on the next call to RequestHeader.
+// Returned value is valid until the next call to RequestHeader.
 // Do not store references to returned value. Make copies instead.
 func (h *RequestHeader) Peek(key string) []byte {
 	k := getHeaderKeyBytes(&h.bufKV, key)
 	return h.peek(k)
+}
+
+// PeekBytes returns header value for the given key.
+//
+// Returned value is valid until the next call to RequestHandler.
+// Do not store references to returned value. Make copies instead.
+func (h *RequestHeader) PeekBytes(key []byte) []byte {
+	h.bufKV.key = append(h.bufKV.key[:0], key...)
+	normalizeHeaderKey(h.bufKV.key)
+	return h.peek(h.bufKV.key)
 }
 
 func (h *RequestHeader) peek(key []byte) []byte {
@@ -462,7 +601,7 @@ func (h *RequestHeader) peek(key []byte) []byte {
 	case bytes.Equal(strContentType, key):
 		return h.contentType
 	default:
-		return peekKV(h.h, key)
+		return peekArg(h.h, key)
 	}
 }
 
@@ -471,6 +610,13 @@ func (h *RequestHeader) peek(key []byte) []byte {
 // Get allocates memory on each call, so prefer using Peek instead.
 func (h *RequestHeader) Get(key string) string {
 	return string(h.Peek(key))
+}
+
+// GetBytes returns header value for the given key.
+//
+// GetBytes allocates memory on each call, so prefer using PeekBytes instead.
+func (h *RequestHeader) GetBytes(key []byte) string {
+	return string(h.PeekBytes(key))
 }
 
 // Read reads request header from r.
@@ -578,7 +724,7 @@ func (h *RequestHeader) parseHeaders(buf []byte) ([]byte, error) {
 				h.ContentLength = -1
 			}
 		default:
-			h.h = setKV(h.h, p.key, p.value)
+			h.h = setArg(h.h, p.key, p.value)
 		}
 	}
 	if p.err != nil {

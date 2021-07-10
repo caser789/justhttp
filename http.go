@@ -346,7 +346,7 @@ func isSkipResponseBody(statusCode int) bool {
 	return statusCode == StatusNoContent || statusCode == StatusNotModified
 }
 
-// ErrReadTimeout may be returned from Request.ReadTimeout
+// ErrReadTimeout may be returned by Request.ReadTimeout
 // or Response.ReadTimeout on timeout.
 var ErrReadTimeout = errors.New("read timeout")
 
