@@ -230,6 +230,10 @@ func (s *Server) serveConn(c io.ReadWriter, ctxP **RequestCtx) error {
 			}
 		}
 	}
+
+	if err != nil && !strings.Contains(err.Error(), "connection reset by peer") {
+		ctx.Logger().Printf("Error when serving network connection: %s", err)
+	}
 	return err
 }
 
@@ -335,7 +339,7 @@ func connWorker(s *Server, ch <-chan net.Conn) {
 				return
 			}
 		}
-		serveConn(s, c, &ctx)
+		s.serveConn(c, &ctx)
 		c.Close()
 		c = nil
 	}
@@ -356,14 +360,6 @@ func acceptConn(s *Server, ln net.Listener) (net.Conn, error) {
 			return nil, err
 		}
 		return c, nil
-	}
-}
-
-func serveConn(s *Server, c io.ReadWriter, ctx **RequestCtx) {
-	if err := s.serveConn(c, ctx); err != nil {
-		if !strings.Contains(err.Error(), "connection reset by peer") {
-			s.logger().Printf("Error when serving network connection: %s", err)
-		}
 	}
 }
 
