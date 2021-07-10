@@ -572,6 +572,17 @@ func (h *RequestHeader) SetCanonical(key, value []byte) {
 	}
 }
 
+// PeekCookie returns cookie for the given key
+func (h *RequestHeader) PeekCookie(key string) []byte {
+    h.bufKV.key = AppendBytesStr(h.bufKV.key[:0], key)
+    return h.PeekCookieBytes(h.bufKV.key)
+}
+
+// PeekCookieBytes returns cookie for the given key
+func (h *RequestHeader) PeekCookieBytes(key []byte) []byte {
+    return peekArg(h.cookies, key)
+}
+
 // Peek returns header value for the given key.
 //
 // Returned value is valid until the next call to RequestHeader.
@@ -600,6 +611,21 @@ func (h *RequestHeader) peek(key []byte) []byte {
 	default:
 		return peekArg(h.h, key)
 	}
+}
+
+// GetCookie returns cookie for the given key.
+//
+// GetCookie allocates memory on each call, so prefer using PeekCookie instead.
+func (h *RequestHeader) GetCookie(key string) string {
+    return string(h.PeekCookie(key))
+}
+
+// GetCookieBytes returns cookie for the given key.
+//
+// GetCookieBytes allocated memory on each call, so prefer using PeekCookieBytes
+// instead.
+func (h *RequestHeader) GetCookieBytes(key []byte) string {
+    return string(h.PeekCookieBytes(key))
 }
 
 // Get returns header value for the given key.
