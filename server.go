@@ -179,7 +179,7 @@ func (s *Server) ServeConn(c io.ReadWriter) error {
 
 func (s *Server) serveConn(c io.ReadWriter, ctxP **RequestCtx) error {
 	ctx := *ctxP
-	initRequestCtx(ctx, c)
+	initCtx(ctx, c)
 
 	var rd readDeadliner
 	readTimeout := s.ReadTimeout
@@ -556,7 +556,7 @@ func (cl *ctxLogger) Printf(format string, args ...interface{}) {
 	ctxLoggerLock.Unlock()
 }
 
-func initRequestCtx(ctx *RequestCtx, c io.ReadWriter) {
+func initCtx(ctx *RequestCtx, c io.ReadWriter) {
 	if ctx.r == nil {
 		readBufferSize := ctx.s.ReadBufferSize
 		if readBufferSize <= 0 {
