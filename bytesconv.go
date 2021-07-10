@@ -199,5 +199,5 @@ func lowercaseBytes(b []byte) {
 // Note it may break if string and/or slice header will change
 // in the future go versions.
 func unsafeBytesToStr(b []byte) string {
-    return *(*string)(unsafe.Pointer(&b))
+	return *(*string)(unsafe.Pointer(&b))
 }
