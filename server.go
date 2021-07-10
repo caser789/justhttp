@@ -128,7 +128,7 @@ func (s *Server) ServerConcurrency(ln net.Listener, concurrency int) error {
 	ch := make(chan net.Conn, 16*concurrency)
 	stopCh := make(chan struct{})
 	go connWorkersMonitor(s, ch, concurrency, stopCh)
-	lastOverflowErrorTime := time.Now()
+	var lastOverflowErrorTime time.Time
 	for {
 		c, err := acceptConn(s, ln)
 		if err != nil {
@@ -138,6 +138,7 @@ func (s *Server) ServerConcurrency(ln net.Listener, concurrency int) error {
 		select {
 		case ch <- c:
 		default:
+			c.Close()
 			if time.Since(lastOverflowErrorTime) > time.Second*10 {
 				s.logger().Printf("The incoming connection cannot be served, because all %d workers are busy. "+
 					"Try increasing concurrency in Server.ServeWorkers()", concurrency)
