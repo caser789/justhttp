@@ -129,6 +129,11 @@ func (h *ResponseHeader) VisitAll(f func(key, value []byte)) {
 	if len(h.server) > 0 {
 		f(strServer, h.server)
 	}
+	if len(h.cookies) > 0 {
+		visitArgs(h.cookies, func(k, v []byte) {
+			f(strSetCookie, v)
+		})
+	}
 	if h.ConnectionClose {
 		f(strConnection, strClose)
 	}
@@ -512,6 +517,13 @@ func (h *RequestHeader) DelBytes(key []byte) {
 	h.h = delArg(h.h, h.bufKV.key)
 }
 
+// VisitAllCookie calls f for each request cookie.
+//
+// f must not retain references to key and/or value after returning.
+func (h *RequestHeader) VisitAllCookie(f func(key, value []byte)) {
+	visitArgs(h.cookies, f)
+}
+
 // VisitAll calls f for each header except Conten-Length.
 //
 // f must not retain references to key and/or value after returning.
@@ -525,6 +537,10 @@ func (h *RequestHeader) VisitAll(f func(key, value []byte)) {
 	}
 	if len(h.userAgent) > 0 {
 		f(strUserAgent, h.userAgent)
+	}
+	if len(h.cookies) > 0 {
+		h.bufKV.value = appendRequestCookieBytes(h.bufKV.value[:0], h.cookies)
+		f(strCookie, h.bufKV.value)
 	}
 	visitArgs(h.h, f)
 }

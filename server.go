@@ -140,27 +140,27 @@ func (s *Server) Serve(ln net.Listener) error {
 func (s *Server) ServerConcurrency(ln net.Listener, concurrency int) error {
 	var lastOverflowErrorTime time.Time
 	var lastPerIPErrorTime time.Time
-    var c net.Conn
-    var err error
+	var c net.Conn
+	var err error
 
-    wp := &workerPool{
-        s: s,
-        maxWorkersCount: concurrency,
-    }
+	wp := &workerPool{
+		s:               s,
+		maxWorkersCount: concurrency,
+	}
 
 	for {
-        if c, err = acceptConn(s, ln, &lastPerIPErrorTime); err != nil {
+		if c, err = acceptConn(s, ln, &lastPerIPErrorTime); err != nil {
 			wp.stop()
 			return err
 		}
-        for attempts := 4; attempts > 0; attempts-- {
-            if wp.tryServe(c) {
-                c = nil
-                break
-            }
-            runtime.Gosched()
-        }
-        if c != nil {
+		for attempts := 4; attempts > 0; attempts-- {
+			if wp.tryServe(c) {
+				c = nil
+				break
+			}
+			runtime.Gosched()
+		}
+		if c != nil {
 			c.Close()
 			c = nil
 			if time.Since(lastOverflowErrorTime) > time.Minute {
@@ -402,81 +402,81 @@ func (s *Server) getServerName() []byte {
 // in FIFO order, i.e. the most recently stopped worker will serve the next
 // incoming connection.
 type workerPool struct {
-    s *Server
-    maxWorkersCount int
+	s               *Server
+	maxWorkersCount int
 
-    lock sync.Mutex
-    workersCount int
-    mustStop bool
+	lock         sync.Mutex
+	workersCount int
+	mustStop     bool
 
-    ready []*workerChan
+	ready []*workerChan
 }
 
 type workerChan struct {
-    t time.Time
-    ch chan net.Conn
+	t  time.Time
+	ch chan net.Conn
 }
 
 func (wp *workerPool) stop() {
-    // Stop all the workers waiting for incoming connections
-    // Do not wait for busy workers - they will stop after
-    // serving the connection and noticing wp.mustStop = true
-    wp.lock.Lock()
-    for _, ch := range wp.ready {
-        ch.ch <- nil
-    }
-    wp.ready = nil
-    wp.mustStop = true
-    wp.lock.Unlock()
+	// Stop all the workers waiting for incoming connections
+	// Do not wait for busy workers - they will stop after
+	// serving the connection and noticing wp.mustStop = true
+	wp.lock.Lock()
+	for _, ch := range wp.ready {
+		ch.ch <- nil
+	}
+	wp.ready = nil
+	wp.mustStop = true
+	wp.lock.Unlock()
 }
 
 func (wp *workerPool) tryServe(c net.Conn) bool {
-    var ch *workerChan
-    createWorker := false
+	var ch *workerChan
+	createWorker := false
 
-    wp.lock.Lock()
-    chans := wp.ready
+	wp.lock.Lock()
+	chans := wp.ready
 
-    // stop workers, which didn't work for more than one second.
-    for len(chans) > 1 && time.Since(chans[0].t) > time.Second {
-        chans[0].ch <- nil
-        copy(chans, chans[1:])
-        chans = chans[:len(chans)-1]
-        wp.ready = chans
-        wp.workersCount--
-    }
+	// stop workers, which didn't work for more than one second.
+	for len(chans) > 1 && time.Since(chans[0].t) > time.Second {
+		chans[0].ch <- nil
+		copy(chans, chans[1:])
+		chans = chans[:len(chans)-1]
+		wp.ready = chans
+		wp.workersCount--
+	}
 
-    n := len(chans) - 1
-    if n < 0 {
-        if wp.workersCount < wp.maxWorkersCount {
-            createWorker = true
-            wp.workersCount++
-        }
-    } else {
-        ch = chans[n]
-        wp.ready = chans[:n]
-    }
+	n := len(chans) - 1
+	if n < 0 {
+		if wp.workersCount < wp.maxWorkersCount {
+			createWorker = true
+			wp.workersCount++
+		}
+	} else {
+		ch = chans[n]
+		wp.ready = chans[:n]
+	}
 
-    wp.lock.Unlock()
+	wp.lock.Unlock()
 
-    if ch == nil {
-        if !createWorker {
-            return false
-        }
-        vch := workerChanPool.Get()
-        if vch == nil {
-            vch = &workerChan{
-                ch: make(chan net.Conn, 1),
-            }
-        }
-        ch = vch.(*workerChan)
-        go func() {
-            connWorker(wp, ch)
-            workerChanPool.Put(vch)
-        }()
-    }
-    ch.ch <- c
-    return true
+	if ch == nil {
+		if !createWorker {
+			return false
+		}
+		vch := workerChanPool.Get()
+		if vch == nil {
+			vch = &workerChan{
+				ch: make(chan net.Conn, 1),
+			}
+		}
+		ch = vch.(*workerChan)
+		go func() {
+			connWorker(wp, ch)
+			workerChanPool.Put(vch)
+		}()
+	}
+	ch.ch <- c
+	return true
 }
 
 var workerChanPool sync.Pool
@@ -489,20 +489,20 @@ func connWorker(wp *workerPool, ch *workerChan) {
 	}()
 
 	var c net.Conn
-    for c = range ch.ch {
-        if c == nil {
-            break
+	for c = range ch.ch {
+		if c == nil {
+			break
 		}
 		wp.s.serveConn(c)
 		c = nil
 
-        ch.t = time.Now()
-        wp.lock.Lock()
-        if wp.mustStop {
-            break
-        }
-        wp.ready = append(wp.ready, ch)
-        wp.lock.Unlock()
+		ch.t = time.Now()
+		wp.lock.Lock()
+		if wp.mustStop {
+			break
+		}
+		wp.ready = append(wp.ready, ch)
+		wp.lock.Unlock()
 	}
 }
 
