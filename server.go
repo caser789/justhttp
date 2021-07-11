@@ -162,7 +162,7 @@ func (s *Server) ServerConcurrency(ln net.Listener, concurrency int) error {
 	}
 }
 
-var defaultLogger = log.New(os.Stderr, "", log.LstdFlags)
+var defaultLogger = Logger(log.New(os.Stderr, "", log.LstdFlags))
 
 func (s *Server) logger() Logger {
 	if s.Logger != nil {
@@ -350,13 +350,12 @@ func (s *Server) acquireCtx(c io.ReadWriteCloser) *RequestCtx {
 		ctx = &RequestCtx{
 			s: s,
 		}
-		ctx.logger.ctx = ctx
 		ctx.v = ctx
 		v = ctx
 	} else {
 		ctx = v.(*RequestCtx)
 	}
-	ctx.ID = (atomic.AddUint64(&globalCtxID, 1)) << 32
+	ctx.initID()
 	ctx.c = c
 	return ctx
 }
@@ -550,7 +549,11 @@ func (ctx *RequestCtx) RemoteAddr() net.Addr {
 
 // RemoteIP returns client ip for the given request.
 func (ctx *RequestCtx) RemoteIP() net.IP {
-	x, ok := ctx.RemoteAddr().(*net.TCPAddr)
+	addr := ctx.RemoteAddr()
+	if addr == nil {
+		return net.IPv4zero
+	}
+	x, ok := addr.(*net.TCPAddr)
 	if !ok {
 		return net.IPv4zero
 	}
@@ -568,6 +571,32 @@ func (ctx *RequestCtx) Error(msg string, statusCode int) {
 	resp.Header.StatusCode = statusCode
 	resp.Header.SetCanonical(strContentType, defaultContentType)
 	resp.Body = AppendBytesStr(resp.Body[:0], msg)
+}
+
+// Init prepares ctx for passing to RequestHandler.
+//
+// remoteAddr and logger are optional. They are used by RequestCtx.Logger().
+//
+// This function is intended for custom Server implementations.
+func (ctx *RequestCtx) Init(req *Request, remoteAddr net.Addr, logger Logger) {
+	if remoteAddr == nil {
+		remoteAddr = zeroIPAddr
+	}
+	ctx.c = &fakeAddrer{
+		addr: remoteAddr,
+	}
+	if logger != nil {
+		ctx.logger.logger = logger
+	}
+	ctx.s = &fakeServer
+	ctx.initID()
+	req.CopyTo(&ctx.Request)
+	ctx.Response.Clear()
+	ctx.Time = time.Now()
+}
+
+func (ctx *RequestCtx) initID() {
+	ctx.ID = (atomic.AddUint64(&globalCtxID, 1)) << 32
 }
 
 // Success sets response Content-Type and body to the given values.
@@ -589,6 +618,12 @@ func (ctx *RequestCtx) Success(contentType string, body []byte) {
 //
 // It is safe re-using returned logger for logging multiple messages.
 func (ctx *RequestCtx) Logger() Logger {
+	if ctx.logger.ctx == nil {
+		ctx.logger.ctx = ctx
+	}
+	if ctx.logger.logger == nil {
+		ctx.logger.logger = ctx.s.logger()
+	}
 	return &ctx.logger
 }
 
@@ -638,7 +673,8 @@ func trimBigBuffers(ctx *RequestCtx) {
 var ctxLoggerLock sync.Mutex
 
 type ctxLogger struct {
-	ctx *RequestCtx
+	ctx    *RequestCtx
+	logger Logger
 }
 
 func (cl *ctxLogger) Printf(format string, args ...interface{}) {
@@ -647,7 +683,7 @@ func (cl *ctxLogger) Printf(format string, args ...interface{}) {
 	ctx := cl.ctx
 	req := &ctx.Request
 	req.ParseURI()
-	ctx.s.logger().Printf("%.3f #%016X - %s - %s %s - %s",
+	cl.logger.Printf("%.3f #%016X - %s - %s %s - %s",
 		time.Since(ctx.Time).Seconds(), ctx.ID, ctx.RemoteAddr(), req.Header.Method, req.URI.URI, s)
 	ctxLoggerLock.Unlock()
 }
@@ -745,4 +781,26 @@ func (r *firstByteReader) Read(b []byte) (int, error) {
 	}
 	n, err := r.c.Read(b)
 	return n + nn, err
+}
+
+var fakeServer Server
+
+type fakeAddrer struct {
+	addr net.Addr
+}
+
+func (fa *fakeAddrer) RemoteAddr() net.Addr {
+	return fa.addr
+}
+
+func (fa *fakeAddrer) Read(p []byte) (int, error) {
+	panic("BUG: unexpected Read call")
+}
+
+func (fa *fakeAddrer) Write(p []byte) (int, error) {
+	panic("BUG: unexpected Write call")
+}
+
+func (fa *fakeAddrer) Close() error {
+	panic("BUG: unexpected Close call")
 }
