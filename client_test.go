@@ -5,12 +5,9 @@ import (
 )
 
 func TODOTestClientDo(t *testing.T) {
-	var req Request
-	var resp Response
-
-	req.Header.Set("HOST", "google.com")
-	if err := Do(&req, &resp); err != nil {
+    statusCode, body, err := Get(nil, "http://google.com")
+    if err != nil {
 		t.Fatalf("unexpected error when doing http request: %s", err)
 	}
-	t.Fatalf("statusCode=%d, body=%q", resp.Header.StatusCode, resp.Body)
+	t.Fatalf("statusCode=%d, body=%q", statusCode, body)
 }

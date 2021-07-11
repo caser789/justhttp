@@ -24,6 +24,16 @@ func Do(req *Request, resp *Response) error {
 	return defaultClient.Do(req, resp)
 }
 
+// Get fetches url contents into dst.
+func Get(dst []byte, url string) (statusCode int, body []byte, err error) {
+	return defaultClient.Get(dst, url)
+}
+
+// GetBytes fetches url contents into dst.
+func GetBytes(dst, url []byte) (statusCode int, body []byte, err error) {
+	return defaultClient.GetBytes(dst, url)
+}
+
 var defaultClient Client
 
 // Client implements http client.
@@ -110,6 +120,40 @@ func (c *Client) Do(req *Request, resp *Response) error {
 	}
 
 	return hc.Do(req, resp)
+}
+
+// Get fetches url contents into dst.
+func (c *Client) Get(dst []byte, url string) (statusCode int, body []byte, err error) {
+	v := urlBufPool.Get()
+	if v == nil {
+		v = make([]byte, 1024)
+	}
+	buf := v.([]byte)
+	buf = AppendBytesStr(buf[:0], url)
+	statusCode, body, err = c.GetBytes(dst, buf)
+	urlBufPool.Put(v)
+	return statusCode, body, err
+}
+
+// GetBytes fetches url contents into dst.
+func (c *Client) GetBytes(dst, url []byte) (statusCode int, body []byte, err error) {
+	req := acquireRequest()
+	req.Header.RequestURI = url
+	req.ParseURI()
+
+	resp := acquireResponse()
+	resp.Body = dst
+	if err = c.Do(req, resp); err != nil {
+		return 0, nil, err
+	}
+	statusCode = resp.Header.StatusCode
+	body = resp.Body
+	resp.Body = nil
+	releaseResponse(resp)
+
+	req.Header.RequestURI = nil
+	releaseRequest(req)
+	return statusCode, body, err
 }
 
 // Maximum number of concurrent connections http client can establish per host
@@ -234,6 +278,42 @@ func (c *HostClient) Do(req *Request, resp *Response) error {
 		c.releaseConn(cc)
 	}
 	return err
+}
+
+// Get fetches url contents into dst.
+func (c *HostClient) Get(dst []byte, url string) (statusCode int, body []byte, err error) {
+	v := urlBufPool.Get()
+	if v == nil {
+		v = make([]byte, 1024)
+	}
+	buf := v.([]byte)
+	buf = AppendBytesStr(buf[:0], url)
+	statusCode, body, err = c.GetBytes(dst, buf)
+	urlBufPool.Put(v)
+	return statusCode, body, err
+}
+
+var urlBufPool sync.Pool
+
+// GetBytes fetches url contents into dst.
+func (c *HostClient) GetBytes(dst, url []byte) (statusCode int, body []byte, err error) {
+	req := acquireRequest()
+	req.Header.RequestURI = url
+	req.ParseURI()
+
+	resp := acquireResponse()
+	resp.Body = dst
+	if err = c.Do(req, resp); err != nil {
+		return 0, nil, err
+	}
+	statusCode = resp.Header.StatusCode
+	body = resp.Body
+	resp.Body = nil
+	releaseResponse(resp)
+
+	req.Header.RequestURI = nil
+	releaseRequest(req)
+	return statusCode, body, err
 }
 
 // ErrNoFreeConns is returned when no free connections available
@@ -451,4 +531,35 @@ func resolveTCPAddrs(addr string) ([]net.TCPAddr, error) {
 		addrs[i].Port = port
 	}
 	return addrs, nil
+}
+
+var (
+	requestPool  sync.Pool
+	responsePool sync.Pool
+)
+
+func acquireRequest() *Request {
+	v := requestPool.Get()
+	if v == nil {
+		return &Request{}
+	}
+	return v.(*Request)
+}
+
+func releaseRequest(req *Request) {
+	req.Clear()
+	requestPool.Put(req)
+}
+
+func acquireResponse() *Response {
+	v := responsePool.Get()
+	if v == nil {
+		return &Response{}
+	}
+	return v.(*Response)
+}
+
+func releaseResponse(resp *Response) {
+	resp.Clear()
+	responsePool.Put(resp)
 }
