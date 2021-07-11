@@ -591,6 +591,11 @@ func (ctx *RequestCtx) Logger() Logger {
 	return &ctx.logger
 }
 
+// TimeoutErrMsg returns last error message set via TimeoutError call.
+func (ctx *RequestCtx) TimeoutErrMsg() string {
+	return ctx.timeoutErrMsg
+}
+
 // TimeoutError sets response status code to StatusRequestTimeout and sets
 // body to the given msg.
 //
