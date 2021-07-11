@@ -674,9 +674,13 @@ func TestRequestHeaderReadSuccess(t *testing.T) {
 	testRequestHeaderReadSuccess(t, h, "GET /foo/bar\r\nHost: google.com\r\n\r\nisdD",
 		0, "/foo/bar", "google.com", "", "", "isdD")
 
-	// blan lines before the first line
+	// blank lines before the first line
 	testRequestHeaderReadSuccess(t, h, "\r\n\n\r\nGET /aaa HTTP/1.1\r\nHost: aaa.com\r\n\r\nsss",
 		0, "/aaa", "aaa.com", "", "", "sss")
+
+	// request uri with spaces
+	testRequestHeaderReadSuccess(t, h, "GET /foo/ bar baz HTTP/1.1\r\nHost: aa.com\r\n\r\nxxx",
+		0, "/foo/ bar baz", "aa.com", "", "", "xxx")
 }
 
 func TestRequestHeaderReadError(t *testing.T) {
