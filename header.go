@@ -61,6 +61,19 @@ type ResponseHeader struct {
 	cookies []argsKV
 }
 
+// Len returns the number of headers set, not counting Coutent-Length,
+// i.e. the number of times f is called in VisitAll.
+func (h *ResponseHeader) Len() int {
+	n := len(h.h) + len(h.cookies)
+	if len(h.contentType) > 0 {
+		n++
+	}
+	if len(h.server) > 0 {
+		n++
+	}
+	return n
+}
+
 // SetCookie sets the given response cookie.
 //
 // It is safe modifying cookie instance after the call.
@@ -343,6 +356,25 @@ func (h *ResponseHeader) parseHeaders(buf []byte) ([]byte, error) {
 		return nil, fmt.Errorf("missing both Content-Length and Transfer-Encoding: chunked in %q", buf)
 	}
 	return s.b, nil
+}
+
+// Len returns the number of headers set, not counting Content-Length,
+// i.e. the number of times f is called in VisitAll.
+func (h *RequestHeader) Len() int {
+	n := len(h.h)
+	if len(h.cookies) > 0 {
+		n++
+	}
+	if len(h.host) > 0 {
+		n++
+	}
+	if len(h.contentType) > 0 {
+		n++
+	}
+	if len(h.userAgent) > 0 {
+		n++
+	}
+	return n
 }
 
 // Set sets the given 'key: value' header.
