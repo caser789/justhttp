@@ -18,6 +18,10 @@ import (
 // Request must contain at least non-zero RequestURI with full url (including
 // scheme and host) or non-zero Host header + RequestURI.
 //
+// Client determines the server to be requested in the following order:
+// - from RequestURI if it contains full url with scheme and host;
+// - from Host header otherwise.
+//
 // ErrNoFreeConns is returned if all Client.MaxConnsPerHost connections
 // to the requested host are busy.
 func Do(req *Request, resp *Response) error {
@@ -239,6 +243,10 @@ type clientConn struct {
 // Request must contain at least non-zero RequestURI with full url (including
 // scheme and host) or non-zero Host header + RequestURI.
 //
+// Client determines the server to be requested in the following order:
+// - from RequestURI if it contains full url with scheme and host;
+// - from Host header otherwise.
+//
 // ErrNoFreeConns is returned if all HostClient.MaxConns connections
 // to the host are busy.
 func (c *HostClient) Do(req *Request, resp *Response) error {
@@ -246,11 +254,8 @@ func (c *HostClient) Do(req *Request, resp *Response) error {
 
 	req.ParseURI()
 	host := req.URI.Host
-	if len(req.Header.PeekBytes(strHost)) == 0 {
-		req.Header.SetCanonical(strHost, host)
-	}
-	if len(host) == 0 {
-		return fmt.Errorf("Host must be non-empty. Set it via RequestHeader.Set() or via RequestHeader.RequestURI")
+	if len(req.Header.host) == 0 {
+		req.Header.host = append(req.Header.host[:0], host...)
 	}
 	if !bytes.Equal(req.URI.Scheme, strHTTP) {
 		return fmt.Errorf("unsupported protocol %q. Currently only http is supported", req.URI.Scheme)
