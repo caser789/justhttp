@@ -124,6 +124,7 @@ func (h *ResponseHeader) CopyTo(dst *ResponseHeader) {
 	dst.contentType = append(dst.contentType[:0], h.contentType...)
 	dst.server = append(dst.server[:0], h.server...)
 	dst.h = copyArgs(dst.h, h.h)
+	dst.cookies = copyArgs(dst.cookies, h.cookies)
 }
 
 // VisitAll calls f for each header except Content-Length.
@@ -574,6 +575,7 @@ func (h *RequestHeader) CopyTo(dst *RequestHeader) {
 	dst.contentType = append(dst.contentType[:0], h.contentType...)
 	dst.userAgent = append(dst.userAgent[:0], h.userAgent...)
 	dst.h = copyArgs(dst.h, h.h)
+	dst.cookies = copyArgs(dst.cookies, h.cookies)
 }
 
 // IsMethodGet returns true if request method is GET.
