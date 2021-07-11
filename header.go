@@ -134,10 +134,10 @@ func (h *ResponseHeader) VisitAll(f func(key, value []byte)) {
 			f(strSetCookie, v)
 		})
 	}
+	visitArgs(h.h, f)
 	if h.ConnectionClose {
 		f(strConnection, strClose)
 	}
-	visitArgs(h.h, f)
 }
 
 // Clear clears response header.
@@ -194,10 +194,6 @@ func (h *ResponseHeader) Write(w *bufio.Writer) error {
 		writeContentLength(w, h.ContentLength)
 	}
 
-	if h.ConnectionClose {
-		writeHeaderLine(w, strConnection, strClose)
-	}
-
 	for i, n := 0, len(h.h); i < n; i++ {
 		kv := &h.h[i]
 		writeHeaderLine(w, kv.key, kv.value)
@@ -209,6 +205,10 @@ func (h *ResponseHeader) Write(w *bufio.Writer) error {
 			kv := &h.cookies[i]
 			writeHeaderLine(w, strSetCookie, kv.value)
 		}
+	}
+
+	if h.ConnectionClose {
+		writeHeaderLine(w, strConnection, strClose)
 	}
 
 	_, err := w.Write(strCRLF)
@@ -506,6 +506,9 @@ type RequestHeader struct {
 	// It may be negative on chunked request.
 	ContentLength int
 
+	// Set to true if request contains 'Connection: close' header.
+	ConnectionClose bool
+
 	host        []byte
 	contentType []byte
 	userAgent   []byte
@@ -555,6 +558,9 @@ func (h *RequestHeader) VisitAll(f func(key, value []byte)) {
 		f(strCookie, h.bufKV.value)
 	}
 	visitArgs(h.h, f)
+	if h.ConnectionClose {
+		f(strConnection, strClose)
+	}
 }
 
 // CopyTo copies all the headers to dst.
@@ -563,6 +569,7 @@ func (h *RequestHeader) CopyTo(dst *RequestHeader) {
 	dst.Method = append(dst.Method[:0], h.Method...)
 	dst.RequestURI = append(dst.RequestURI[:0], h.RequestURI...)
 	dst.ContentLength = h.ContentLength
+	dst.ConnectionClose = h.ConnectionClose
 	dst.host = append(dst.host[:0], h.host...)
 	dst.contentType = append(dst.contentType[:0], h.contentType...)
 	dst.userAgent = append(dst.userAgent[:0], h.userAgent...)
@@ -611,6 +618,7 @@ func (h *RequestHeader) Clear() {
 	h.Method = h.Method[:0]
 	h.RequestURI = h.RequestURI[:0]
 	h.ContentLength = 0
+	h.ConnectionClose = false
 
 	h.host = h.host[:0]
 	h.contentType = h.contentType[:0]
@@ -651,6 +659,11 @@ func (h *RequestHeader) SetCanonical(key, value []byte) {
 		h.userAgent = append(h.userAgent[:0], value...)
 	case bytes.Equal(strContentLength, key):
 		// Content-Length is managed automatically
+	case bytes.Equal(strConnection, key):
+		if bytes.Equal(strClose, value) {
+			h.ConnectionClose = true
+		}
+		// skip other 'Connection' shit :)
 	case bytes.Equal(strTransferEncoding, key):
 		// Transfer-Encoding is managed automatically
 	case bytes.Equal(strConnection, key):
@@ -700,6 +713,11 @@ func (h *RequestHeader) peek(key []byte) []byte {
 		return h.contentType
 	case bytes.Equal(strUserAgent, key):
 		return h.userAgent
+	case bytes.Equal(strConnection, key):
+		if h.ConnectionClose {
+			return strClose
+		}
+		return nil
 	default:
 		return peekArg(h.h, key)
 	}
@@ -841,6 +859,10 @@ func (h *RequestHeader) parseHeaders(buf []byte) ([]byte, error) {
 			if bytes.Equal(s.value, strChunked) {
 				h.ContentLength = -1
 			}
+		case bytes.Equal(s.key, strConnection):
+			if bytes.Equal(s.key, strConnection) {
+				h.ConnectionClose = true
+			}
 		case bytes.Equal(s.key, strCookie):
 			h.cookies = parseRequestCookies(h.cookies, s.value)
 		default:
@@ -922,6 +944,10 @@ func (h *RequestHeader) Write(w *bufio.Writer) error {
 	if n > 0 {
 		h.bufKV.value = appendRequestCookieBytes(h.bufKV.value[:0], h.cookies)
 		writeHeaderLine(w, strCookie, h.bufKV.value)
+	}
+
+	if h.ConnectionClose {
+		writeHeaderLine(w, strConnection, strClose)
 	}
 
 	_, err := w.Write(strCRLF)
