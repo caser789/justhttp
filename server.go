@@ -484,11 +484,7 @@ func wrapPerIPConn(s *Server, c net.Conn) net.Conn {
 		s.perIPConnCounter.Unregister(ip)
 		return nil
 	}
-	return &perIPConn{
-		Conn:             c,
-		ip:               ip,
-		perIPConnCounter: &s.perIPConnCounter,
-	}
+	return acquirePerIPConn(c, ip, &s.perIPConnCounter)
 }
 
 // ErrPerIPConnLimit may be returned from ServeConn if the number of connections

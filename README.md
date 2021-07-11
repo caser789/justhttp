@@ -8,3 +8,4 @@ https://godoc.org/github.com/caser789/justhttp
 - [ ] shadow to handle timeout
 - [x] Request cookie
 - [x] Limit max connection from the same IP
+    - [x] connection pool
