@@ -3,6 +3,7 @@ package fasthttp
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"net"
@@ -70,6 +71,7 @@ type Client struct {
 
 	mLock sync.Mutex
 	m     map[string]*HostClient
+	ms    map[string]*HostClient
 }
 
 // Do performs the given http request and fills the given http response.
@@ -82,13 +84,30 @@ type Client struct {
 func (c *Client) Do(req *Request, resp *Response) error {
 	req.ParseURI()
 	host := req.URI.Host
+
+	isHTTPS := false
+	if bytes.Equal(req.URI.Scheme, strHTTPS) {
+		isHTTPS = true
+	} else if !bytes.Equal(req.URI.Scheme, strHTTP) {
+		return fmt.Errorf("unsupported protocol %q. http and https are supported", req.URI.Scheme)
+	}
+
 	startCleaner := false
 
 	c.mLock.Lock()
-	if c.m == nil {
-		c.m = make(map[string]*HostClient)
+	m := c.m
+	if isHTTPS {
+		m = c.ms
 	}
-	hc := c.m[string(host)]
+	if m == nil {
+		m = make(map[string]*HostClient)
+		if isHTTPS {
+			c.ms = m
+		} else {
+			c.m = m
+		}
+	}
+	hc := m[string(host)]
 	if hc == nil {
 		hc = &HostClient{
 			Addr:            string(host),
@@ -98,8 +117,13 @@ func (c *Client) Do(req *Request, resp *Response) error {
 			WriteBufferSize: c.WriteBufferSize,
 			Logger:          c.Logger,
 		}
-		c.m[hc.Addr] = hc
-		if len(c.m) == 1 {
+		if isHTTPS {
+			hc.Dial = hc.dialHTTPS
+		} else {
+			hc.Dial = hc.dialHTTP
+		}
+		m[hc.Addr] = hc
+		if len(m) == 1 {
 			startCleaner = true
 		}
 	}
@@ -111,12 +135,12 @@ func (c *Client) Do(req *Request, resp *Response) error {
 			for {
 				t := time.Now()
 				c.mLock.Lock()
-				for k, v := range c.m {
+				for k, v := range m {
 					if t.Sub(v.LastUseTime()) > time.Minute {
-						delete(c.m, k)
+						delete(m, k)
 					}
 				}
-				if len(c.m) == 0 {
+				if len(m) == 0 {
 					mustStop = true
 				}
 				c.mLock.Unlock()
@@ -191,6 +215,9 @@ type HostClient struct {
 	// TCP dialer is used if not set.
 	Dial DialFunc
 
+	// Optional TLS config.
+	TLSConfig *tls.Config
+
 	// Maximum number of connections to the host which may be established.
 	//
 	// DefaultMaxConnsPerHost is used if not set.
@@ -263,9 +290,6 @@ func (c *HostClient) Do(req *Request, resp *Response) error {
 	host := req.URI.Host
 	if len(req.Header.host) == 0 {
 		req.Header.host = append(req.Header.host[:0], host...)
-	}
-	if !bytes.Equal(req.URI.Scheme, strHTTP) {
-		return fmt.Errorf("unsupported protocol %q. Currently only http is supported", req.URI.Scheme)
 	}
 	req.Header.RequestURI = req.URI.AppendRequestURI(req.Header.RequestURI[:0])
 
@@ -417,7 +441,7 @@ func (c *HostClient) acquireConn() (*clientConn, error) {
 
 	dial := c.Dial
 	if dial == nil {
-		dial = c.defaultDial
+		dial = c.dialHTTP
 	}
 	conn, err := dial(c.Addr)
 	if err != nil {
@@ -506,7 +530,35 @@ func (c *HostClient) releaseReader(br *bufio.Reader) {
 
 var dnsCacheDuration = time.Minute
 
-func (c *HostClient) defaultDial(addr string) (net.Conn, error) {
+func (c *HostClient) dialHTTPS(addr string) (net.Conn, error) {
+	tcpAddr, err := c.getTCPAddr(addr, true)
+	if err != nil {
+		return nil, err
+	}
+	conn, err := net.DialTCP("tcp4", nil, tcpAddr)
+	if err != nil {
+		return nil, err
+	}
+	tlsConfig := c.TLSConfig
+	if tlsConfig == nil {
+		tlsConfig = defaultTLSConfig
+	}
+	return tls.Client(conn, tlsConfig), nil
+}
+
+var defaultTLSConfig = &tls.Config{
+	InsecureSkipVerify: true,
+}
+
+func (c *HostClient) dialHTTP(addr string) (net.Conn, error) {
+	tcpAddr, err := c.getTCPAddr(addr, false)
+	if err != nil {
+		return nil, err
+	}
+	return net.DialTCP("tcp4", nil, tcpAddr)
+}
+
+func (c *HostClient) getTCPAddr(addr string, isTLS bool) (*net.TCPAddr, error) {
 	c.tcpAddrsLock.Lock()
 	tcpAddrs := c.tcpAddrs
 	if tcpAddrs != nil && !c.tcpAddrsPending && time.Since(c.tcpAddrsResolveTime) > dnsCacheDuration {
@@ -517,7 +569,7 @@ func (c *HostClient) defaultDial(addr string) (net.Conn, error) {
 
 	if tcpAddrs == nil {
 		var err error
-		if tcpAddrs, err = resolveTCPAddrs(addr); err != nil {
+		if tcpAddrs, err = resolveTCPAddrs(addr, isTLS); err != nil {
 			c.tcpAddrsLock.Lock()
 			c.tcpAddrsPending = false
 			c.tcpAddrsLock.Unlock()
@@ -537,7 +589,7 @@ func (c *HostClient) defaultDial(addr string) (net.Conn, error) {
 		n := atomic.AddUint32(&c.tcpAddrsIdx, 1)
 		tcpAddr = &tcpAddrs[n%uint32(n)]
 	}
-	return net.DialTCP("tcp4", nil, tcpAddr)
+	return tcpAddr, nil
 }
 
 func (c *HostClient) getClientName() []byte {
@@ -555,9 +607,12 @@ func (c *HostClient) getClientName() []byte {
 	return clientName
 }
 
-func resolveTCPAddrs(addr string) ([]net.TCPAddr, error) {
+func resolveTCPAddrs(addr string, isTLS bool) ([]net.TCPAddr, error) {
 	host := addr
 	port := 80
+	if isTLS {
+		port = 443
+	}
 	n := strings.Index(addr, ":")
 	if n >= 0 {
 		h, portS, err := net.SplitHostPort(addr)
