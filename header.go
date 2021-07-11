@@ -64,13 +64,8 @@ type ResponseHeader struct {
 // Len returns the number of headers set, not counting Coutent-Length,
 // i.e. the number of times f is called in VisitAll.
 func (h *ResponseHeader) Len() int {
-	n := len(h.h) + len(h.cookies)
-	if len(h.contentType) > 0 {
-		n++
-	}
-	if len(h.server) > 0 {
-		n++
-	}
+	n := 0
+	h.VisitAll(func(k, v []byte) { n++ })
 	return n
 }
 
@@ -361,19 +356,8 @@ func (h *ResponseHeader) parseHeaders(buf []byte) ([]byte, error) {
 // Len returns the number of headers set, not counting Content-Length,
 // i.e. the number of times f is called in VisitAll.
 func (h *RequestHeader) Len() int {
-	n := len(h.h)
-	if len(h.cookies) > 0 {
-		n++
-	}
-	if len(h.host) > 0 {
-		n++
-	}
-	if len(h.contentType) > 0 {
-		n++
-	}
-	if len(h.userAgent) > 0 {
-		n++
-	}
+	n := 0
+	h.VisitAll(func(k, v []byte) { n++ })
 	return n
 }
 
