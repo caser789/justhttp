@@ -213,6 +213,8 @@ func (s *Server) serveConn(c io.ReadWriteCloser) error {
 
 	var err error
 	var currentTime time.Time
+	var connectionClose bool
+	var errMsg string
 	for {
 		currentTime = time.Now()
 		ctx.ID++
@@ -248,7 +250,8 @@ func (s *Server) serveConn(c io.ReadWriteCloser) error {
 				}
 				if err = ctx.Request.ReadTimeout(br, readTimeout); err == ErrReadTimeout {
 					// ctx.Request and br cannot be used after ErrReadTimeout.
-					ctx = makeCtxShadow(ctx)
+					ctx = s.acquireCtx(c)
+					br = nil
 					break
 				}
 				if br.Buffered() == 0 {
@@ -260,7 +263,8 @@ func (s *Server) serveConn(c io.ReadWriteCloser) error {
 				if err == nil {
 					if err = ctx.Request.ReadTimeout(br, readTimeout); err == ErrReadTimeout {
 						// ctx.Request and br cannot be used after ErrReadTimeout.
-						ctx = makeCtxShadow(ctx)
+						ctx = s.acquireCtx(c)
+						br = nil
 						break
 					}
 					if br.Buffered() == 0 || err != nil {
@@ -284,9 +288,10 @@ func (s *Server) serveConn(c io.ReadWriteCloser) error {
 		ctx.Time = currentTime
 		ctx.Response.Clear()
 		s.Handler(ctx)
-		shadow := ctx.shadow
-		if shadow != nil {
-			ctx = shadow
+		errMsg = ctx.timeoutErrMsg
+		if len(errMsg) > 0 {
+			ctx = s.acquireCtx(c)
+			ctx.Error(errMsg, StatusRequestTimeout)
 		}
 		if wd != nil {
 			if err = wd.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
@@ -299,7 +304,7 @@ func (s *Server) serveConn(c io.ReadWriteCloser) error {
 		if err = writeResponse(ctx, bw); err != nil {
 			break
 		}
-		connectionClose := ctx.Response.Header.ConnectionClose
+		connectionClose = ctx.Response.Header.ConnectionClose
 
 		trimBigBuffers(ctx)
 
@@ -356,8 +361,8 @@ func (s *Server) acquireCtx(c io.ReadWriteCloser) *RequestCtx {
 }
 
 func (s *Server) releaseCtx(ctx *RequestCtx) {
-	if ctx.shadow != nil {
-		panic("BUG: cannot release RequestCtx with shadow")
+	if len(ctx.timeoutErrMsg) > 0 {
+		panic("BUG: cannot release timed out RequestCtx")
 	}
 	ctx.c = nil
 	ctx.fbr.c = nil
@@ -522,11 +527,9 @@ type RequestCtx struct {
 	c      io.ReadWriteCloser
 	fbr    firstByteReader
 
-	// shadow is set by TimeoutError().
-	shadow *RequestCtx
-
-	timeoutCh    chan struct{}
-	timeoutTimer *time.Timer
+	timeoutErrMsg string
+	timeoutCh     chan struct{}
+	timeoutTimer  *time.Timer
 
 	v interface{}
 }
@@ -596,16 +599,12 @@ func (ctx *RequestCtx) Logger() Logger {
 // TimouetError MUST be called before returning from RequestsHandler if there are
 // references to ctx and/or its members in other goroutines.
 func (ctx *RequestCtx) TimeoutError(msg string) {
-	shadow := makeCtxShadow(ctx)
-	if ctx.shadow == nil {
-		ctx.shadow = shadow
-		shadow.Error(msg, StatusRequestTimeout)
-	}
+	ctx.timeoutErrMsg = msg
 }
 
 func writeResponse(ctx *RequestCtx, w *bufio.Writer) error {
-	if ctx.shadow != nil {
-		panic("BUG: cannot write response with shadow")
+	if len(ctx.timeoutErrMsg) > 0 {
+		panic("BUG: cannot write timed out response")
 	}
 	h := &ctx.Response.Header
 	serverOld := h.server
@@ -719,18 +718,6 @@ func acquireWriter(ctx *RequestCtx) *bufio.Writer {
 func releaseWriter(ctx *RequestCtx, w *bufio.Writer) {
 	w.Reset(nil)
 	ctx.s.writerPool.Put(w)
-}
-
-func makeCtxShadow(ctx *RequestCtx) *RequestCtx {
-	var shadow RequestCtx
-	shadow.Request = Request{}
-	shadow.Response = Response{}
-	shadow.logger.ctx = &shadow
-	shadow.v = &shadow
-
-	shadow.s = ctx.s
-	shadow.c = ctx.c
-	return &shadow
 }
 
 type firstByteReader struct {
