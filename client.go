@@ -300,7 +300,7 @@ func (c *HostClient) Do(req *Request, resp *Response) error {
 	}
 	c.releaseReader(br)
 
-	if resp.Header.ConnectionClose {
+	if req.Header.ConnectionClose || resp.Header.ConnectionClose {
 		c.closeConn(cc)
 	} else {
 		c.releaseConn(cc)
