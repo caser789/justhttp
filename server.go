@@ -115,7 +115,6 @@ const DefaultConcurrency = 256 * 1024
 // Serve serves incoming connections from the given listener.
 //
 // Serve blocks until the given listener returns permanent error.
-// This error is returned from Serve.
 func (s *Server) Serve(ln net.Listener) error {
 	return s.ServerConcurrency(ln, DefaultConcurrency)
 }
@@ -124,7 +123,6 @@ func (s *Server) Serve(ln net.Listener) error {
 // It may serve maximum concurrency simultaneous connections.
 //
 // ServeConcurrency blocks until the given listener returns permanent error.
-// This error is returned from ServeConcurrency.
 func (s *Server) ServerConcurrency(ln net.Listener, concurrency int) error {
 	var lastOverflowErrorTime time.Time
 	var lastPerIPErrorTime time.Time
@@ -141,6 +139,9 @@ func (s *Server) ServerConcurrency(ln net.Listener, concurrency int) error {
 	for {
 		if c, err = acceptConn(s, ln, &lastPerIPErrorTime); err != nil {
 			wp.Stop()
+			if err == io.EOF {
+				return nil
+			}
 			return err
 		}
 		if !wp.Serve(c) {
@@ -350,8 +351,9 @@ func acceptConn(s *Server, ln net.Listener, lastPerIPErrorTime *time.Time) (net.
 			}
 			if err != io.EOF && !strings.Contains(err.Error(), "use of closed network connection") {
 				s.logger().Printf("Permanent error when accepting new connections:: %s", err)
+				return nil, err
 			}
-			return nil, err
+			return nil, io.EOF
 		}
 		if s.MaxConnsPerIP > 0 {
 			pic := wrapPerIPConn(s, c)
