@@ -20,20 +20,11 @@ func init() {
 	}()
 }
 
-var (
-	serverDate  atomic.Value
-	gmtLocation = func() *time.Location {
-		x, err := time.LoadLocation("GMT")
-		if err != nil {
-			panic(fmt.Sprintf("cannot load GMT location: %s", err))
-		}
-		return x
-	}()
-)
+var serverDate atomic.Value
 
 func refreshServerDate() {
-	s := time.Now().In(gmtLocation).Format(time.RFC1123)
-	serverDate.Store([]byte(s))
+	b := AppendHTTPDate(nil, time.Now())
+	serverDate.Store(b)
 }
 
 // ResponseHeader represents HTTP response header.

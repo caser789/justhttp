@@ -11,7 +11,7 @@ func TestParseUintSuccess(t *testing.T) {
 }
 
 func testParseUintSuccess(t *testing.T, s string, expectedN int) {
-	n, err := parseUint([]byte(s))
+	n, err := ParseUint([]byte(s))
 	if err != nil {
 		t.Fatalf("Unexpected error when parsing %q: %s", s, err)
 	}
@@ -41,7 +41,7 @@ func TestParseUintError(t *testing.T) {
 }
 
 func testParseUintError(t *testing.T, s string) {
-	n, err := parseUint([]byte(s))
+	n, err := ParseUint([]byte(s))
 	if err == nil {
 		t.Fatalf("Expecting error when parsing %q. obtained %d", s, n)
 	}
@@ -62,7 +62,7 @@ func TestParseUfloatSuccess(t *testing.T) {
 }
 
 func testParseUfloatSuccess(t *testing.T, s string, expectedF float64) {
-	f, err := parseUfloat([]byte(s))
+	f, err := ParseUfloat([]byte(s))
 	if err != nil {
 		t.Fatalf("Unexpected error when parsing %q: %s", s, err)
 	}
@@ -103,7 +103,7 @@ func TestParseUfloatError(t *testing.T) {
 }
 
 func testParseUfloatError(t *testing.T, s string) {
-	n, err := parseUfloat([]byte(s))
+	n, err := ParseUfloat([]byte(s))
 	if err == nil {
 		t.Fatalf("Expecting error when parsing %q. obtained %f", s, n)
 	}
