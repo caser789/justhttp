@@ -38,6 +38,8 @@ type remoteAddrer interface {
 //
 // ResponseHandler must call ctx.TimeoutError() before return
 // if it keeps references to ctx and/or its members after the return
+// Consider wrapping RequestHandler into TimeoutHandler if response time
+// must be limited.
 type RequestHandler func(ctx *RequestCtx)
 
 // TimeoutHandler creates RequestHandler, which returns StatusRequestTimeout
