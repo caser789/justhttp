@@ -11,7 +11,8 @@ import (
 
 // Request represents HTTP request.
 //
-// It is forbidden copying Request instances. Create new instances instead.
+// It is forbidden copying Request instances. Create new instances
+// and use CopyTo() instead.
 type Request struct {
 	// Request header
 	Header RequestHeader
@@ -31,6 +32,19 @@ type Request struct {
 
 	timeoutCh    chan error
 	timeoutTimer *time.Timer
+}
+
+// CopyTo copies req contents to dst
+func (req *Request) CopyTo(dst *Request) {
+	dst.Clear()
+	req.Header.CopyTo(&dst.Header)
+	dst.Body = append(dst.Body[:0], req.Body...)
+	if req.parsedURI {
+		dst.ParseURI()
+	}
+	if req.parsedPostArgs {
+		dst.ParsePostArgs()
+	}
 }
 
 // ParseURI parses request uri and fills Request.URI.
@@ -241,7 +255,8 @@ func parseChunkSize(r *bufio.Reader) (int, error) {
 
 // Response represents HTTP response
 //
-// It is forbidden copying Response instances. Create new instances instead.
+// It is forbidden copying Response instances. Create new instances
+// and use CopyTo() instead.
 type Response struct {
 	// Response header
 	Header ResponseHeader
@@ -255,6 +270,14 @@ type Response struct {
 
 	timeoutCh    chan error
 	timeoutTimer *time.Timer
+}
+
+// CopyTo copies resp contents to dst.
+func (resp *Response) CopyTo(dst *Response) {
+	dst.Clear()
+	resp.Header.CopyTo(&dst.Header)
+	dst.Body = append(dst.Body[:0], resp.Body...)
+	dst.SkipBody = resp.SkipBody
 }
 
 // Clear clears response contents.
