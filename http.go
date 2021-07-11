@@ -3,11 +3,9 @@ package fasthttp
 import (
 	"bufio"
 	"bytes"
-	"errors"
 	"fmt"
 	"io"
 	"sync"
-	"time"
 )
 
 // Request represents HTTP request.
@@ -30,9 +28,6 @@ type Request struct {
 	// PostArgs becomes available only after Request.ParesPostArgs() call.
 	PostArgs       Args
 	parsedPostArgs bool
-
-	timeoutCh    chan error
-	timeoutTimer *time.Timer
 }
 
 // CopyTo copies req contents to dst
@@ -106,41 +101,6 @@ func (req *Request) Read(r *bufio.Reader) error {
 		req.Body = body
 	}
 	return nil
-}
-
-// ReadTimeout reads request (including body) from the given r during
-// the given timeout.
-//
-// If request couldnt' be read during the given timeout,
-// ErrTimeout is returned
-// Request can no longer be used after ErrTimeout error.
-func (req *Request) ReadTimeout(r *bufio.Reader, timeout time.Duration) error {
-	if timeout <= 0 {
-		return req.Read(r)
-	}
-
-	ch := req.timeoutCh
-	if ch == nil {
-		ch = make(chan error, 1)
-		req.timeoutCh = ch
-	} else if len(ch) > 0 {
-		panic("BUG: Request.timeoutCh must be empty!")
-	}
-
-	go func() {
-		ch <- req.Read(r)
-	}()
-
-	var err error
-	req.timeoutTimer = initTimer(req.timeoutTimer, timeout)
-	select {
-	case err = <-ch:
-	case <-req.timeoutTimer.C:
-		req.timeoutCh = nil
-		err = ErrTimeout
-	}
-	stopTimer(req.timeoutTimer)
-	return err
 }
 
 // Write writes request to w.
@@ -283,9 +243,6 @@ type Response struct {
 	// if set to true, Response.Read() skips reading body.
 	// Use it for HEAD requests
 	SkipBody bool
-
-	timeoutCh    chan error
-	timeoutTimer *time.Timer
 }
 
 // CopyTo copies resp contents to dst except of BodyStream.
@@ -327,41 +284,6 @@ func (resp *Response) Read(r *bufio.Reader) error {
 	}
 	resp.Body = body
 	return nil
-}
-
-// ReadTimeout reads response (including body) from the given r during
-// the given timeout.
-//
-// If response coundn't be read during the given timeout,
-// ErrTimeout is returned.
-// Response can no longer be used after ErrTimeout error.
-func (resp *Response) ReadTimeout(r *bufio.Reader, timeout time.Duration) error {
-	if timeout <= 0 {
-		return resp.Read(r)
-	}
-
-	ch := resp.timeoutCh
-	if ch == nil {
-		ch = make(chan error, 1)
-		resp.timeoutCh = ch
-	} else if len(ch) > 0 {
-		panic("BUG: Response.timeoutCh must be empty!")
-	}
-
-	go func() {
-		ch <- resp.Read(r)
-	}()
-
-	var err error
-	resp.timeoutTimer = initTimer(resp.timeoutTimer, timeout)
-	select {
-	case err = <-ch:
-	case <-resp.timeoutTimer.C:
-		resp.timeoutCh = nil
-		err = ErrTimeout
-	}
-	stopTimer(resp.timeoutTimer)
-	return err
 }
 
 // Write writes response to w.
@@ -441,10 +363,6 @@ func isSkipResponseBody(statusCode int) bool {
 	}
 	return statusCode == StatusNoContent || statusCode == StatusNotModified
 }
-
-// ErrTimeout may be returned by Request.ReadTimeout,
-// or Response.ReadTimeout or HostClient.DoTimeout on timeout.
-var ErrTimeout = errors.New("read timeout")
 
 func round2(n int) int {
 	if n <= 0 {

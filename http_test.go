@@ -3,10 +3,8 @@ package fasthttp
 import (
 	"bufio"
 	"bytes"
-	"io"
 	"strings"
 	"testing"
-	"time"
 )
 
 func TestResponseBodyStream(t *testing.T) {
@@ -137,39 +135,6 @@ func testRequestWriteError(t *testing.T, method, requestURI, host, userAgent, bo
 	}
 }
 
-func TestRequestReadTimeout(t *testing.T) {
-	req := &Request{}
-
-	for i := 0; i < 5; i++ {
-		testRequestReadTimeoutError(t, &req)
-	}
-
-	s := "GET /abc HTTP/1.1\r\nHost: google.com\r\n\r\n"
-	r := bytes.NewBufferString(s)
-	rb := bufio.NewReader(r)
-	if err := req.ReadTimeout(rb, 100*time.Millisecond); err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	verifyRequestHeader(t, &req.Header, 0, "/abc", "google.com", "", "")
-
-	for i := 0; i < 5; i++ {
-		testRequestReadTimeoutError(t, &req)
-	}
-}
-
-func testRequestReadTimeoutError(t *testing.T, req **Request) {
-	r, _ := io.Pipe()
-	rb := bufio.NewReader(r)
-	err := (*req).ReadTimeout(rb, 5*time.Millisecond)
-	if err == nil {
-		t.Fatalf("expecting error")
-	}
-	if err != ErrTimeout {
-		t.Fatalf("unexpected error: %s. expecting %s", err, ErrTimeout)
-	}
-	*req = &Request{}
-}
-
 func TestRequestParseURI(t *testing.T) {
 	host := "foobar.com"
 	requestURI := "/aaa/bb+b%20d?ccc=ddd&qqq#1334dfds&=d"
@@ -287,39 +252,6 @@ func TestResponseReadWithoutBody(t *testing.T) {
 
 	testResponseReadWithoutBody(t, &resp, "HTTP 200 OK\r\nContent-Type: text/xml\r\nContent-Length: 123\r\n\r\nxxxx", true,
 		200, 123, "text/xml", "xxxx")
-}
-
-func TestResponseReadTimeout(t *testing.T) {
-	resp := &Response{}
-
-	for i := 0; i < 5; i++ {
-		testResponseReadTimeoutError(t, &resp)
-	}
-
-	s := "HTTP/1.1 200 OK\r\nContent-Type: text/aaa\r\nContent-Length: 5\r\n\r\n12345"
-	r := bytes.NewBufferString(s)
-	rb := bufio.NewReader(r)
-	if err := resp.ReadTimeout(rb, 100*time.Millisecond); err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	verifyResponseHeader(t, &resp.Header, 200, 5, "text/aaa")
-
-	for i := 0; i < 5; i++ {
-		testResponseReadTimeoutError(t, &resp)
-	}
-}
-
-func testResponseReadTimeoutError(t *testing.T, resp **Response) {
-	r, _ := io.Pipe()
-	rb := bufio.NewReader(r)
-	err := (*resp).ReadTimeout(rb, 5*time.Millisecond)
-	if err == nil {
-		t.Fatalf("expecting error")
-	}
-	if err != ErrTimeout {
-		t.Fatalf("unexpected error: %s. Expecting %s", err, ErrTimeout)
-	}
-	*resp = &Response{}
 }
 
 func testResponseReadWithoutBody(t *testing.T, resp *Response, s string, skipBody bool,
