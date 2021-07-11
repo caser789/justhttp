@@ -121,14 +121,15 @@ type Server struct {
 	writerPool sync.Pool
 }
 
-const defaultConcurrency = 64 * 1024
+// Default concurrency used by Server.Serve()
+const DefaultConcurrency = 64 * 1024
 
 // Serve serves incoming connections from the given listener.
 //
 // Serve blocks until the given listener returns permanent error.
 // This error is returned from Serve.
 func (s *Server) Serve(ln net.Listener) error {
-	return s.ServerConcurrency(ln, defaultConcurrency)
+	return s.ServerConcurrency(ln, DefaultConcurrency)
 }
 
 // ServeConcurrency serves incoming connections from the given listener.
