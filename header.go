@@ -193,9 +193,7 @@ func (h *ResponseHeader) Write(w *bufio.Writer) error {
 
 	for i, n := 0, len(h.h); i < n; i++ {
 		kv := &h.h[i]
-		if !bytes.Equal(strServer, kv.key) && !bytes.Equal(strContentType, kv.key) {
-			writeHeaderLine(w, kv.key, kv.value)
-		}
+		writeHeaderLine(w, kv.key, kv.value)
 	}
 
 	n := len(h.cookies)
@@ -492,6 +490,7 @@ type RequestHeader struct {
 
 	host        []byte
 	contentType []byte
+	userAgent   []byte
 
 	h     []argsKV
 	bufKV argsKV
@@ -523,6 +522,9 @@ func (h *RequestHeader) VisitAll(f func(key, value []byte)) {
 	if len(h.contentType) > 0 {
 		f(strContentType, h.contentType)
 	}
+	if len(h.userAgent) > 0 {
+		f(strUserAgent, h.userAgent)
+	}
 	visitArgs(h.h, f)
 }
 
@@ -533,6 +535,7 @@ func (h *RequestHeader) CopyTo(dst *RequestHeader) {
 	dst.ContentLength = h.ContentLength
 	dst.host = append(dst.host[:0], h.host...)
 	dst.contentType = append(dst.contentType[:0], h.contentType...)
+	dst.userAgent = append(dst.userAgent[:0], h.userAgent...)
 	dst.h = copyArgs(dst.h, h.h)
 }
 
@@ -580,6 +583,7 @@ func (h *RequestHeader) Clear() {
 
 	h.host = h.host[:0]
 	h.contentType = h.contentType[:0]
+	h.userAgent = h.userAgent[:0]
 
 	h.h = h.h[:0]
 	h.cookies = h.cookies[:0]
@@ -612,6 +616,8 @@ func (h *RequestHeader) SetCanonical(key, value []byte) {
 		h.host = append(h.host[:0], value...)
 	case bytes.Equal(strContentType, key):
 		h.contentType = append(h.contentType[:0], value...)
+	case bytes.Equal(strUserAgent, key):
+		h.userAgent = append(h.userAgent[:0], value...)
 	case bytes.Equal(strContentLength, key):
 		// Content-Length is managed automatically
 	case bytes.Equal(strTransferEncoding, key):
@@ -661,6 +667,8 @@ func (h *RequestHeader) peek(key []byte) []byte {
 		return h.host
 	case bytes.Equal(strContentType, key):
 		return h.contentType
+	case bytes.Equal(strUserAgent, key):
+		return h.userAgent
 	default:
 		return peekArg(h.h, key)
 	}
@@ -784,6 +792,8 @@ func (h *RequestHeader) parseHeaders(buf []byte) ([]byte, error) {
 		switch {
 		case bytes.Equal(s.key, strHost):
 			h.host = append(h.host[:0], s.value...)
+		case bytes.Equal(s.key, strUserAgent):
+			h.userAgent = append(h.userAgent[:0], s.value...)
 		case bytes.Equal(s.key, strContentType):
 			h.contentType = append(h.contentType[:0], s.value...)
 		case bytes.Equal(s.key, strContentLength):
@@ -845,6 +855,12 @@ func (h *RequestHeader) Write(w *bufio.Writer) error {
 	w.Write(strHTTP11)
 	w.Write(strCRLF)
 
+	userAgent := h.userAgent
+	if len(userAgent) == 0 {
+		userAgent = defaultUserAgent
+	}
+	writeHeaderLine(w, strUserAgent, userAgent)
+
 	host := h.host
 	if len(host) == 0 {
 		return fmt.Errorf("missing required Host header")
@@ -865,9 +881,7 @@ func (h *RequestHeader) Write(w *bufio.Writer) error {
 
 	for i, n := 0, len(h.h); i < n; i++ {
 		kv := &h.h[i]
-		if !bytes.Equal(strHost, kv.key) && !bytes.Equal(strContentType, kv.key) {
-			writeHeaderLine(w, kv.key, kv.value)
-		}
+		writeHeaderLine(w, kv.key, kv.value)
 	}
 
 	n := len(h.cookies)
