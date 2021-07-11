@@ -397,9 +397,9 @@ func (h *ResponseHeader) SetCanonical(key, value []byte) {
 		// Date is managed automatically
 	case bytes.Equal(strSetCookie, key):
 		var kv *argsKV
-        h.cookies, kv = allocArg(h.cookies)
-        kv.key = getCookieKey(kv.key, value)
-        kv.value = append(kv.value[:0], value...)
+		h.cookies, kv = allocArg(h.cookies)
+		kv.key = getCookieKey(kv.key, value)
+		kv.value = append(kv.value[:0], value...)
 	default:
 		h.h = setArg(h.h, key, value)
 	}
