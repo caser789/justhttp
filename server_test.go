@@ -22,7 +22,7 @@ func TestRequestCtxInit(t *testing.T) {
 	}
 	ctx.Logger().Printf("foo bar %d", 10)
 
-    expectedLog := "0.000 #0012345700000000 - 0.0.0.0:0 -  http:// - foo bar 10\n"
+	expectedLog := "0.000 #0012345700000000 - 0.0.0.0:0 -  http:// - foo bar 10\n"
 	if logger.out != expectedLog {
 		t.Fatalf("unexpected log output: %q. Expected %q", logger.out, expectedLog)
 	}
@@ -398,7 +398,7 @@ func (cl *customLogger) Printf(format string, args ...interface{}) {
 }
 
 type readWriter struct {
-    net.Conn
+	net.Conn
 	r bytes.Buffer
 	w bytes.Buffer
 }
@@ -416,7 +416,7 @@ func (rw *readWriter) Close() error {
 }
 
 func (rw *readWriter) RemoteAddr() net.Addr {
-    return zeroTCPAddr
+	return zeroTCPAddr
 }
 
 func verifyResponse(t *testing.T, r *bufio.Reader, expectedStatusCode int, expectedContentType, expectedBody string) {

@@ -8,7 +8,6 @@ import (
 	"log"
 	"net"
 	"os"
-	"runtime"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -143,22 +142,15 @@ func (s *Server) ServerConcurrency(ln net.Listener, concurrency int) error {
 			wp.Stop()
 			return err
 		}
-		for attempts := 4; attempts > 0; attempts-- {
-			if wp.TryServe(c) {
-				c = nil
-				break
-			}
-			runtime.Gosched()
-		}
-		if c != nil {
+		if !wp.Serve(c) {
 			c.Close()
-			c = nil
 			if time.Since(lastOverflowErrorTime) > time.Minute {
 				s.logger().Printf("The incoming connection cannot be served, because all %d workers are busy. "+
 					"Try increasing concurrency in Server.ServeConcurrency()", concurrency)
 				lastOverflowErrorTime = time.Now()
 			}
 		}
+		c = nil
 	}
 }
 
@@ -181,8 +173,8 @@ func (s *Server) logger() Logger {
 //
 // ServeConn closes c before returning.
 func (s *Server) ServeConn(c net.Conn) error {
-    if s.MaxConnsPerIP > 0 {
-        pic := wrapPerIPConn(s, c)
+	if s.MaxConnsPerIP > 0 {
+		pic := wrapPerIPConn(s, c)
 		if pic == nil {
 			c.Close()
 			return ErrPerIPConnLimit
@@ -215,21 +207,21 @@ func (s *Server) serveConn(c net.Conn) error {
 			if err = c.SetReadDeadline(currentTime.Add(readTimeout)); err != nil {
 				break
 			}
-        }
-        if dt < time.Second || br != nil {
-            if br == nil {
-                br = acquireReader(ctx)
-            }
-            err = ctx.Request.Read(br)
-            if br.Buffered() == 0 || err != nil {
-                releaseReader(ctx, br)
-                br = nil
+		}
+		if dt < time.Second || br != nil {
+			if br == nil {
+				br = acquireReader(ctx)
+			}
+			err = ctx.Request.Read(br)
+			if br.Buffered() == 0 || err != nil {
+				releaseReader(ctx, br)
+				br = nil
 			}
 		} else {
-            ctx, br, err = acquireByteReader(ctx)
-            if err == nil {
-                err = ctx.Request.Read(br)
-                if br.Buffered() == 0 || err != nil {
+			ctx, br, err = acquireByteReader(ctx)
+			if err == nil {
+				err = ctx.Request.Read(br)
+				if br.Buffered() == 0 || err != nil {
 					releaseReader(ctx, br)
 					br = nil
 				}
@@ -254,8 +246,8 @@ func (s *Server) serveConn(c net.Conn) error {
 			ctx = s.acquireCtx(c)
 			ctx.Error(errMsg, StatusRequestTimeout)
 		}
-        if writeTimeout > 0 {
-            if err = c.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
+		if writeTimeout > 0 {
+			if err = c.SetWriteDeadline(time.Now().Add(writeTimeout)); err != nil {
 				break
 			}
 		}
@@ -436,9 +428,9 @@ var zeroTCPAddr = &net.TCPAddr{
 //
 // Always returns non-nil result.
 func (ctx *RequestCtx) RemoteAddr() net.Addr {
-    addr := ctx.c.RemoteAddr()
-    if addr == nil {
-        return zeroTCPAddr
+	addr := ctx.c.RemoteAddr()
+	if addr == nil {
+		return zeroTCPAddr
 	}
 	return addr
 }
@@ -447,7 +439,7 @@ func (ctx *RequestCtx) RemoteAddr() net.Addr {
 //
 // Always returns non-nil result.
 func (ctx *RequestCtx) RemoteIP() net.IP {
-    x, ok := ctx.RemoteAddr().(*net.TCPAddr)
+	x, ok := ctx.RemoteAddr().(*net.TCPAddr)
 	if !ok {
 		return net.IPv4zero
 	}
@@ -686,7 +678,7 @@ func (r *firstByteReader) Read(b []byte) (int, error) {
 var fakeServer Server
 
 type fakeAddrer struct {
-    net.Conn
+	net.Conn
 	addr net.Addr
 }
 
