@@ -55,15 +55,7 @@ type ResponseHeader struct {
 }
 
 // ContentType returns Content-Type header value.
-//
-// This function allocates memory on each call, so consider
-// using ContentTypeBytes instead.
-func (h *ResponseHeader) ContentType() string {
-	return string(h.ContentTypeBytes())
-}
-
-// ContentTypeBytes returns Content-Type header value.
-func (h *ResponseHeader) ContentTypeBytes() []byte {
+func (h *ResponseHeader) ContentType() []byte {
 	return h.contentType
 }
 
@@ -378,15 +370,7 @@ func (h *ResponseHeader) parseHeaders(buf []byte) ([]byte, error) {
 }
 
 // ContentType returns Content-Type header value.
-//
-// This function allocates memory on each call, so consider
-// using ContentTypeBytes instead.
-func (h *RequestHeader) ContentType() string {
-	return string(h.ContentTypeBytes())
-}
-
-// ContentTypeBytes returns Content-Type header value.
-func (h *RequestHeader) ContentTypeBytes() []byte {
+func (h *RequestHeader) ContentType() []byte {
 	return h.contentType
 }
 
@@ -403,14 +387,7 @@ func (h *RequestHeader) SetContentTypeBytes(contentType []byte) {
 }
 
 // Host returns Host header value.
-//
-// This function allocates memory on each call, so consider using HostBytes.
-func (h *RequestHeader) Host() string {
-	return string(h.HostBytes())
-}
-
-// HostBytes returns Host header value.
-func (h *RequestHeader) HostBytes() []byte {
+func (h *RequestHeader) Host() []byte {
 	return h.host
 }
 
@@ -427,15 +404,7 @@ func (h *RequestHeader) SetHostBytes(host []byte) {
 }
 
 // UserAgent returns User-Agent header value.
-//
-// This function allocates memory on each call, so consider
-// using UserAgentBytes.
-func (h *RequestHeader) UserAgent() string {
-	return string(h.UserAgentBytes())
-}
-
-// UserAgentBytes returns User-Agent header value.
-func (h *RequestHeader) UserAgentBytes() []byte {
+func (h *RequestHeader) UserAgent() []byte {
 	return h.userAgent
 }
 
@@ -544,20 +513,6 @@ func (h *ResponseHeader) GetCookie(cookie *Cookie) bool {
 	}
 	cookie.ParseBytes(v)
 	return true
-}
-
-// Get returns header value for the given key.
-//
-// Get allocates memory on each call, so prefer using Peek instead.
-func (h *ResponseHeader) Get(key string) string {
-	return string(h.Peek(key))
-}
-
-// GetBytes returns header value for the given key.
-//
-// GetBytes allocates memory on each call, so prefer using PeekBytes instead.
-func (h *ResponseHeader) GetBytes(key []byte) string {
-	return string(h.PeekBytes(key))
 }
 
 // Peek returns header value for the given key.
@@ -701,14 +656,7 @@ func (h *RequestHeader) SetRequestURIBytes(requestURI []byte) {
 }
 
 // Method returns HTTP request method.
-//
-// Method allocates memory on each call, so consider using MethodBytes.
-func (h *RequestHeader) Method() string {
-	return string(h.MethodBytes())
-}
-
-// MethodBytes returns HTTP request method.
-func (h *RequestHeader) MethodBytes() []byte {
+func (h *RequestHeader) Method() []byte {
 	if len(h.method) == 0 {
 		return strGet
 	}
@@ -729,17 +677,17 @@ func (h *RequestHeader) SetMethodBytes(method []byte) {
 
 // IsGet returns true if request method is GET.
 func (h *RequestHeader) IsGet() bool {
-	return bytes.Equal(h.MethodBytes(), strGet)
+	return bytes.Equal(h.Method(), strGet)
 }
 
 // IsPost returns true if request method is POST.
 func (h *RequestHeader) IsPost() bool {
-	return bytes.Equal(h.MethodBytes(), strPost)
+	return bytes.Equal(h.Method(), strPost)
 }
 
 // IsHead returns true if request method is HEAD.
 func (h *RequestHeader) IsHead() bool {
-	return bytes.Equal(h.MethodBytes(), strHead)
+	return bytes.Equal(h.Method(), strHead)
 }
 
 // SetCookie sets 'key: value' cookies.
@@ -871,35 +819,6 @@ func (h *RequestHeader) peek(key []byte) []byte {
 	default:
 		return peekArg(h.h, key)
 	}
-}
-
-// GetCookie returns cookie for the given key.
-//
-// GetCookie allocates memory on each call, so prefer using PeekCookie instead.
-func (h *RequestHeader) GetCookie(key string) string {
-	return string(h.PeekCookie(key))
-}
-
-// GetCookieBytes returns cookie for the given key.
-//
-// GetCookieBytes allocated memory on each call, so prefer using PeekCookieBytes
-// instead.
-func (h *RequestHeader) GetCookieBytes(key []byte) string {
-	return string(h.PeekCookieBytes(key))
-}
-
-// Get returns header value for the given key.
-//
-// Get allocates memory on each call, so prefer using Peek instead.
-func (h *RequestHeader) Get(key string) string {
-	return string(h.Peek(key))
-}
-
-// GetBytes returns header value for the given key.
-//
-// GetBytes allocates memory on each call, so prefer using PeekBytes instead.
-func (h *RequestHeader) GetBytes(key []byte) string {
-	return string(h.PeekBytes(key))
 }
 
 // Read reads request header from r.
