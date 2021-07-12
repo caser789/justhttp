@@ -49,13 +49,13 @@ func (r *errorReader) Read(p []byte) (int, error) {
 func TestRequestHeaderEmptyMethod(t *testing.T) {
 	var h RequestHeader
 
-	if !h.IsMethodGet() {
+	if !h.IsGet() {
 		t.Fatalf("empty method must be equivalent to GET")
 	}
-	if h.IsMethodPost() {
+	if h.IsPost() {
 		t.Fatalf("empty method cannot be POST")
 	}
-	if h.IsMethodHead() {
+	if h.IsHead() {
 		t.Fatalf("empty method cannot be HEAD")
 	}
 }
@@ -873,9 +873,9 @@ func TestRequestHeaderReadError(t *testing.T) {
 
 func TestRequestHeaderSetGet(t *testing.T) {
 	h := &RequestHeader{
-		Method:     strPost,
 		RequestURI: []byte("/aa/bbb"),
 	}
+	h.SetMethod("POST")
 	h.Set("foo", "bar")
 	h.Set("host", "12345")
 	h.Set("content-type", "aaa/bbb")

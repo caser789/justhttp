@@ -70,8 +70,8 @@ func (req *Request) ParsePostArgs() error {
 		return nil
 	}
 
-	if !req.Header.IsMethodPost() {
-		return fmt.Errorf("Cannot parse POST args for %q request", req.Header.Method)
+	if !req.Header.IsPost() {
+		return fmt.Errorf("Cannot parse POST args for %q request", req.Header.method)
 	}
 	if !bytes.Equal(req.Header.contentType, strPostArgsContentType) {
 		return fmt.Errorf("Cannot parse POST args for %q Content-Type. Required %q Content-Type",
@@ -104,7 +104,7 @@ func (req *Request) Read(r *bufio.Reader) error {
 		return err
 	}
 
-	if req.Header.IsMethodPost() {
+	if req.Header.IsPost() {
 		req.Body, err = readBody(r, req.Header.ContentLength, req.Body)
 		if err != nil {
 			req.Clear()
@@ -119,14 +119,17 @@ func (req *Request) Read(r *bufio.Reader) error {
 //
 // Write doesn't flush request to w for performance reasons.
 func (req *Request) Write(w *bufio.Writer) error {
-	contentLengthOld := req.Header.ContentLength
+	if len(req.Header.host) == 0 {
+		req.ParseURI()
+		req.Header.SetHostBytes(req.URI.Host)
+		req.Header.RequestURI = req.URI.AppendRequestURI(req.Header.RequestURI[:0])
+	}
 	req.Header.ContentLength = len(req.Body)
 	err := req.Header.Write(w)
-	req.Header.ContentLength = contentLengthOld
 	if err != nil {
 		return err
 	}
-	if req.Header.IsMethodPost() {
+	if req.Header.IsPost() {
 		_, err = w.Write(req.Body)
 	} else if len(req.Body) > 0 {
 		return fmt.Errorf("Non-zero body of non-POST request. body=%q", req.Body)
