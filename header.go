@@ -237,11 +237,9 @@ func (h *ResponseHeader) tryRead(r *bufio.Reader, n int) error {
 	h.Clear()
 	b, err := r.Peek(n)
 	if len(b) == 0 {
-		if err == io.EOF {
-			return err
-		}
-		if err == nil {
-			panic("bufio.Reader.Peek() returned nil, nil")
+		// treat all errors on the first byte read as EOF
+		if n == 1 || err == io.EOF {
+			return io.EOF
 		}
 		return fmt.Errorf("error when reading response headers: %s", err)
 	}
@@ -527,8 +525,8 @@ type RequestHeader struct {
 
 	cookies []argsKV
 
-    // aux buffer for Client.
-    clientBuf []byte
+	// aux buffer for Client.
+	clientBuf []byte
 }
 
 // Del deletes header with the given key.
@@ -784,11 +782,9 @@ func (h *RequestHeader) tryRead(r *bufio.Reader, n int) error {
 	h.Clear()
 	b, err := r.Peek(n)
 	if len(b) == 0 {
-		if err == io.EOF {
-			return err
-		}
-		if err == nil {
-			panic("bufio.Reader.Peek() returned nil, nil")
+		// treat all errors on the first byte read as EOF
+		if n == 1 || err == io.EOF {
+			return io.EOF
 		}
 		return fmt.Errorf("error when reading request headers: %s", err)
 	}
