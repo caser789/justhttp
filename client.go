@@ -224,7 +224,7 @@ type HostClient struct {
 	Logger Logger
 
 	clientName  atomic.Value
-	lastUseTime atomic.Value
+	lastUseTime uint64
 
 	connsLock  sync.Mutex
 	connsCount int
@@ -249,11 +249,8 @@ type clientConn struct {
 
 // LastUseTime returns time the client was last used
 func (c *HostClient) LastUseTime() time.Time {
-	v := c.lastUseTime.Load()
-	if v == nil {
-		return time.Time{}
-	}
-	return v.(time.Time)
+	n := atomic.LoadUint64(&c.lastUseTime)
+	return time.Unix(int64(n), 0)
 }
 
 // Do performs the given http request and sets the corresponding response.
@@ -268,7 +265,7 @@ func (c *HostClient) LastUseTime() time.Time {
 // ErrNoFreeConns is returned if all HostClient.MaxConns connections
 // to the host are busy.
 func (c *HostClient) Do(req *Request, resp *Response) error {
-	c.lastUseTime.Store(time.Now())
+	atomic.StoreUint64(&c.lastUseTime, uint64(time.Now().Unix()))
 
 	req.ParseURI()
 	host := req.URI.Host
