@@ -266,7 +266,7 @@ type Response struct {
 	//
 	// Either BodyStream or Body may be set, but not both
 	//
-	// Response.Read() never sets BodySteam -- it sets only Body.
+	// Client and Response.Read() never sets BodySteam -- it sets only Body.
 	BodyStream io.Reader
 
 	// if set to true, Response.Read() skips reading body.
