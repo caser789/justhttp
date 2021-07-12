@@ -649,6 +649,21 @@ func (ctx *RequestCtx) TimeoutError(msg string) {
 	ctx.timeoutErrMsg = msg
 }
 
+// IsGet returns true if request method is GET.
+func (ctx *RequestCtx) IsGet() bool {
+	return ctx.Request.Header.IsMethodGet()
+}
+
+// IsPost returns true if request method is POST.
+func (ctx *RequestCtx) IsPost() bool {
+	return ctx.Request.Header.IsMethodPost()
+}
+
+// IsHead returns true if request method is HEAD.
+func (ctx *RequestCtx) IsHead() bool {
+	return ctx.Request.Header.IsMethodHead()
+}
+
 func writeResponse(ctx *RequestCtx, w *bufio.Writer) error {
 	if len(ctx.timeoutErrMsg) > 0 {
 		panic("BUG: cannot write timed out response")
