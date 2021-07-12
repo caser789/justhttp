@@ -622,8 +622,9 @@ func (h *RequestHeader) VisitAllCookie(f func(key, value []byte)) {
 // f must not retain references to key and/or value after returning.
 // Copy key and/or value contents before returning if you need retaining them.
 func (h *RequestHeader) VisitAll(f func(key, value []byte)) {
-	if len(h.host) > 0 {
-		f(strHost, h.host)
+	host := h.Host()
+	if len(host) > 0 {
+		f(strHost, host)
 	}
 	contentType := h.ContentType()
 	if len(contentType) > 0 {
@@ -781,7 +782,7 @@ func (h *RequestHeader) SetBytesKV(key, value []byte) {
 func (h *RequestHeader) SetCanonical(key, value []byte) {
 	switch {
 	case bytes.Equal(strHost, key):
-		h.host = append(h.host[:0], value...)
+		h.SetHostBytes(value)
 	case bytes.Equal(strContentType, key):
 		h.SetContentTypeBytes(value)
 	case bytes.Equal(strUserAgent, key):
@@ -839,7 +840,7 @@ func (h *RequestHeader) PeekBytes(key []byte) []byte {
 func (h *RequestHeader) peek(key []byte) []byte {
 	switch {
 	case bytes.Equal(strHost, key):
-		return h.host
+		return h.Host()
 	case bytes.Equal(strContentType, key):
 		return h.ContentType()
 	case bytes.Equal(strUserAgent, key):
@@ -945,7 +946,7 @@ func (h *RequestHeader) parseHeaders(buf []byte) ([]byte, error) {
 	for s.next() {
 		switch {
 		case bytes.Equal(s.key, strHost):
-			h.host = append(h.host[:0], s.value...)
+			h.SetHostBytes(s.value)
 		case bytes.Equal(s.key, strUserAgent):
 			h.userAgent = append(h.userAgent[:0], s.value...)
 		case bytes.Equal(s.key, strContentType):
@@ -978,7 +979,7 @@ func (h *RequestHeader) parseHeaders(buf []byte) ([]byte, error) {
 		return nil, s.err
 	}
 
-	if len(h.host) == 0 {
+	if len(h.Host()) == 0 {
 		return nil, fmt.Errorf("missing required Host header in %q", buf)
 	}
 
@@ -1033,7 +1034,7 @@ func (h *RequestHeader) Write(w *bufio.Writer) error {
 	}
 	writeHeaderLine(w, strUserAgent, userAgent)
 
-	host := h.host
+	host := h.Host()
 	if len(host) == 0 {
 		return fmt.Errorf("missing required Host header")
 	}
