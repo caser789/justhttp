@@ -507,7 +507,7 @@ func (h *ResponseHeader) setBytes(key, value []byte) {
 //
 // Returns false if cookie with the given cookie.Key is missing
 func (h *ResponseHeader) GetCookie(cookie *Cookie) bool {
-	v := peekArg(h.cookies, cookie.Key)
+	v := peekArgBytes(h.cookies, cookie.Key)
 	if v == nil {
 		return false
 	}
@@ -546,7 +546,7 @@ func (h *ResponseHeader) peek(key []byte) []byte {
 		}
 		return nil
 	default:
-		return peekArg(h.h, key)
+		return peekArgBytes(h.h, key)
 	}
 }
 
@@ -775,13 +775,12 @@ func (h *RequestHeader) SetCanonical(key, value []byte) {
 
 // PeekCookie returns cookie for the given key
 func (h *RequestHeader) PeekCookie(key string) []byte {
-	h.bufKV.key = AppendBytesStr(h.bufKV.key[:0], key)
-	return h.PeekCookieBytes(h.bufKV.key)
+	return peekArgStr(h.cookies, key)
 }
 
 // PeekCookieBytes returns cookie for the given key
 func (h *RequestHeader) PeekCookieBytes(key []byte) []byte {
-	return peekArg(h.cookies, key)
+	return peekArgBytes(h.cookies, key)
 }
 
 // Peek returns header value for the given key.
@@ -817,7 +816,7 @@ func (h *RequestHeader) peek(key []byte) []byte {
 		}
 		return nil
 	default:
-		return peekArg(h.h, key)
+		return peekArgBytes(h.h, key)
 	}
 }
 

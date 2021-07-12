@@ -76,8 +76,7 @@ func (a *Args) SetBytesKV(key, value []byte) {
 //
 // Returned value is valid until the next Args call.
 func (a *Args) Peek(key string) []byte {
-	a.bufKV.key = AppendBytesStr(a.bufKV.key[:0], key)
-	return a.PeekBytes(a.bufKV.key)
+	return peekArgStr(a.args, key)
 }
 
 // PeekBytes returns query arg value for the given key.
@@ -86,7 +85,7 @@ func (a *Args) Peek(key string) []byte {
 //
 // It is safe modifying key buffer after PeekBytes return.
 func (a *Args) PeekBytes(key []byte) []byte {
-	return peekArg(a.args, key)
+	return peekArgBytes(a.args, key)
 }
 
 // Has returns true if the given key exists in Args.
@@ -356,10 +355,20 @@ func setArg(h []argsKV, key, value []byte) []argsKV {
 	return append(h, kv)
 }
 
-func peekArg(h []argsKV, k []byte) []byte {
+func peekArgBytes(h []argsKV, k []byte) []byte {
 	for i, n := 0, len(h); i < n; i++ {
 		kv := &h[i]
-		if bytes.Equal(k, kv.key) {
+		if bytes.Equal(kv.key, k) {
+			return kv.value
+		}
+	}
+	return nil
+}
+
+func peekArgStr(h []argsKV, k string) []byte {
+	for i, n := 0, len(h); i < n; i++ {
+		kv := &h[i]
+		if EqualBytesStr(kv.key, k) {
 			return kv.value
 		}
 	}
@@ -414,7 +423,7 @@ func (s *argsScanner) next(kv *argsKV) bool {
 func hasArg(h []argsKV, k []byte) bool {
 	for i, n := 0, len(h); i < n; i++ {
 		kv := &h[i]
-		if bytes.Equal(k, kv.key) {
+		if bytes.Equal(kv.key, k) {
 			return true
 		}
 	}

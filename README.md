@@ -11,3 +11,6 @@ https://godoc.org/github.com/caser789/justhttp
 - [x] Request cookie
 - [x] Limit max connection from the same IP
     - [x] connection pool
+- [ ] Example tests.
+- [ ] Load balancing client for multiple upstream hosts.
+- [ ] Client with requests' pipelining support.
