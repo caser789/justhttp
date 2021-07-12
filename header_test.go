@@ -110,38 +110,6 @@ func testRequestHeaderHTTPVer(t *testing.T, s string, connectionClose bool) {
 	}
 }
 
-func TestRequestHeaderConnectionClose(t *testing.T) {
-	var h RequestHeader
-
-	h.Set("Connection", "close")
-	h.Set("Host", "foobar")
-	if !h.ConnectionClose {
-		t.Fatalf("connection: close not set")
-	}
-
-	var w bytes.Buffer
-	bw := bufio.NewWriter(&w)
-	if err := h.Write(bw); err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-	if err := bw.Flush(); err != nil {
-		t.Fatalf("unexpected error: %s", err)
-	}
-
-	var h1 RequestHeader
-	br := bufio.NewReader(&w)
-	if err := h1.Read(br); err != nil {
-		t.Fatalf("error when reading request header: %s", err)
-	}
-
-	if !h1.ConnectionClose {
-		t.Fatalf("unexpected connection: close value: %v", h1.ConnectionClose)
-	}
-	if string(h1.Peek("Connection")) != "close" {
-		t.Fatalf("unexpected connection value: %q. Expecting %q", h.Peek("Connection"), "close")
-	}
-}
-
 func TestResponseHeaderCopyTo(t *testing.T) {
 	var h ResponseHeader
 
@@ -183,6 +151,38 @@ func TestRequestHeaderCopyTo(t *testing.T) {
 	}
 	if !bytes.Equal(h1.Peek("aaaxxx"), h.Peek("aaaxxx")) {
 		t.Fatalf("unexpected aaaxxx %q. Expected %q", h1.Peek("aaaxxx"), h.Peek("aaaxxx"))
+	}
+}
+
+func TestRequestHeaderConnectionClose(t *testing.T) {
+	var h RequestHeader
+
+	h.Set("Connection", "close")
+	h.Set("Host", "foobar")
+	if !h.ConnectionClose {
+		t.Fatalf("connection: close not set")
+	}
+
+	var w bytes.Buffer
+	bw := bufio.NewWriter(&w)
+	if err := h.Write(bw); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if err := bw.Flush(); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	var h1 RequestHeader
+	br := bufio.NewReader(&w)
+	if err := h1.Read(br); err != nil {
+		t.Fatalf("error when reading request header: %s", err)
+	}
+
+	if !h1.ConnectionClose {
+		t.Fatalf("unexpected connection: close value: %v", h1.ConnectionClose)
+	}
+	if string(h1.Peek("Connection")) != "close" {
+		t.Fatalf("unexpected connection value: %q. Expecting %q", h.Peek("Connection"), "close")
 	}
 }
 
@@ -242,15 +242,21 @@ func TestResponseHeaderVisitAll(t *testing.T) {
 		t.Fatalf("Unepxected error: %s", err)
 	}
 
-	if h.Len() != 3 {
-		t.Fatalf("unexpected number of headers: %d. Expected 3", h.Len())
+	if h.Len() != 4 {
+		t.Fatalf("Unexpected number of headers: %d. Expected 4", h.Len())
 	}
+	contentLengthCount := 0
 	contentTypeCount := 0
 	cookieCount := 0
 	h.VisitAll(func(key, value []byte) {
 		k := string(key)
 		v := string(value)
 		switch k {
+		case "Content-Length":
+			if v != string(h.Peek(k)) {
+				t.Fatalf("unexpected content-length: %q. Expecting %q", v, h.Peek(k))
+			}
+			contentLengthCount++
 		case "Content-Type":
 			if v != string(h.Peek(k)) {
 				t.Fatalf("Unexpected content-type: %q. Expected %q", v, h.Peek(k))
@@ -268,6 +274,9 @@ func TestResponseHeaderVisitAll(t *testing.T) {
 			t.Fatalf("unexpected header %q=%q", k, v)
 		}
 	})
+	if contentLengthCount != 1 {
+		t.Fatalf("unexpected number of content-length headers: %d. Expected 1", contentLengthCount)
+	}
 	if contentTypeCount != 1 {
 		t.Fatalf("unexpected number of content-type headers: %d. Expected 1", contentTypeCount)
 	}
@@ -286,7 +295,7 @@ func TestRequestHeaderVisitAll(t *testing.T) {
 	}
 
 	if h.Len() != 4 {
-		t.Fatalf("unexpected number of header: %d. Expected 4", h.Len())
+		t.Fatalf("Unexpected number of header: %d. Expected 4", h.Len())
 	}
 	hostCount := 0
 	xxCount := 0
@@ -475,33 +484,68 @@ func TestRequestHeaderCookie(t *testing.T) {
 	}
 }
 
-func TestResponseHeaderConnectionClose(t *testing.T) {
-	testResponseHeaderConnectionClose(t, true)
-	testResponseHeaderConnectionClose(t, false)
-}
+func TestRequestHeaderSetGet(t *testing.T) {
+	h := &RequestHeader{}
+	h.SetRequestURI("/aa/bbb")
+	h.SetMethod("POST")
+	h.Set("foo", "bar")
+	h.Set("host", "12345")
+	h.Set("content-type", "aaa/bbb")
+	h.Set("content-length", "1234")
+	h.Set("user-agent", "aaabbb")
+	h.Set("referer", "axcv")
+	h.Set("baz", "xxxxx")
+	h.Set("transfer-encoding", "chunked")
+	h.Set("connection", "close")
 
-func testResponseHeaderConnectionClose(t *testing.T, connectionClose bool) {
-	h := &ResponseHeader{
-		ConnectionClose: connectionClose,
+	expectRequestHeaderGet(t, h, "Foo", "bar")
+	expectRequestHeaderGet(t, h, "Host", "12345")
+	expectRequestHeaderGet(t, h, "Content-Type", "aaa/bbb")
+	expectRequestHeaderGet(t, h, "Content-Length", "1234")
+	expectRequestHeaderGet(t, h, "USER-AGent", "aaabbb")
+	expectRequestHeaderGet(t, h, "Referer", "axcv")
+	expectRequestHeaderGet(t, h, "baz", "xxxxx")
+	expectRequestHeaderGet(t, h, "Transfer-Encoding", "")
+	expectRequestHeaderGet(t, h, "connecTION", "close")
+	if !h.ConnectionClose {
+		t.Fatalf("unset connection: close")
 	}
+
+	if h.ContentLength() != 1234 {
+		t.Fatalf("Unexpected content-length %d. Expected %d", h.ContentLength(), 1234)
+	}
+
 	w := &bytes.Buffer{}
 	bw := bufio.NewWriter(w)
 	err := h.Write(bw)
 	if err != nil {
-		t.Fatalf("Unexpected error when writing response header: %s", err)
+		t.Fatalf("Unexpected error when writing request header: %s", err)
 	}
 	if err := bw.Flush(); err != nil {
-		t.Fatalf("Unexpected error when flushing response header: %s", err)
+		t.Fatalf("Unexpected error when flushing request header: %s", err)
 	}
 
-	var h1 ResponseHeader
+	var h1 RequestHeader
 	br := bufio.NewReader(w)
-	err = h1.Read(br)
-	if err != nil {
-		t.Fatalf("Unexpected error when reading response header: %s", err)
+	if err = h1.Read(br); err != nil {
+		t.Fatalf("Unexpected error when reading request header: %s", err)
 	}
-	if h1.ConnectionClose != h.ConnectionClose {
-		t.Fatalf("Unexpected value for ConnectionClose: %v. Expected %v", h1.ConnectionClose, h.ConnectionClose)
+
+	if h1.ContentLength() != h.ContentLength() {
+		t.Fatalf("Unexpected Content-Length %d. Expected %d", h1.ContentLength(), h.ContentLength())
+	}
+
+	expectRequestHeaderGet(t, &h1, "Foo", "bar")
+	expectRequestHeaderGet(t, &h1, "HOST", "12345")
+	expectRequestHeaderGet(t, &h1, "Content-Type", "aaa/bbb")
+	expectRequestHeaderGet(t, &h1, "Content-Length", "1234")
+	expectRequestHeaderGet(t, &h1, "USER-AGent", "aaabbb")
+	expectRequestHeaderGet(t, &h1, "Referer", "axcv")
+	expectRequestHeaderGet(t, &h1, "baz", "xxxxx")
+	expectRequestHeaderGet(t, &h1, "Transfer-Encoding", "")
+	expectRequestHeaderGet(t, &h1, "Connection", "close")
+	if !h1.ConnectionClose {
+		t.Fatalf("unset connection: close")
 	}
 }
 
@@ -518,13 +562,13 @@ func TestResponseHeaderSetGet(t *testing.T) {
 	expectResponseHeaderGet(t, h, "Foo", "bar")
 	expectResponseHeaderGet(t, h, "Content-Type", "aaa/bbb")
 	expectResponseHeaderGet(t, h, "Connection", "close")
-	expectResponseHeaderGet(t, h, "Content-Length", "")
+	expectResponseHeaderGet(t, h, "Content-Length", "1234")
 	expectResponseHeaderGet(t, h, "seRVer", "aaaa")
 	expectResponseHeaderGet(t, h, "baz", "xxxxx")
 	expectResponseHeaderGet(t, h, "Transfer-Encoding", "")
 
-	if h.ContentLength != 0 {
-		t.Fatalf("Unexpected content-length %d. Expected %d", h.ContentLength, 0)
+	if h.ContentLength() != 1234 {
+		t.Fatalf("Unexpected content-length %d. Expected %d", h.ContentLength(), 1234)
 	}
 	if !h.ConnectionClose {
 		t.Fatalf("Unexpected Connection: close value %v. Expected %v", h.ConnectionClose, true)
@@ -546,11 +590,11 @@ func TestResponseHeaderSetGet(t *testing.T) {
 		t.Fatalf("Unexpected error when reading response header: %s", err)
 	}
 
-	if h.ContentLength != h1.ContentLength {
-		t.Fatalf("Unexpected content-length %d. Expected %d", h.ContentLength, h1.ContentLength)
+	if h1.ContentLength() != h.ContentLength() {
+		t.Fatalf("Unexpected Content-Length %d. Expected %d", h1.ContentLength(), h.ContentLength())
 	}
-	if h.ConnectionClose != h1.ConnectionClose {
-		t.Fatalf("Unexpected Connection: close value %v. Expected %v", h.ConnectionClose, h1.ConnectionClose)
+	if h1.ConnectionClose != h.ConnectionClose {
+		t.Fatalf("unexpected connection: close %v. Expected %v", h1.ConnectionClose, h.ConnectionClose)
 	}
 
 	expectResponseHeaderGet(t, &h1, "Foo", "bar")
@@ -560,9 +604,58 @@ func TestResponseHeaderSetGet(t *testing.T) {
 	expectResponseHeaderGet(t, &h1, "baz", "xxxxx")
 }
 
+func expectRequestHeaderGet(t *testing.T, h *RequestHeader, key, expectedValue string) {
+	if string(h.Peek(key)) != expectedValue {
+		t.Fatalf("Unexpected value for key %q: %q. Expected %q", key, h.Peek(key), expectedValue)
+	}
+}
+
 func expectResponseHeaderGet(t *testing.T, h *ResponseHeader, key, expectedValue string) {
 	if string(h.Peek(key)) != expectedValue {
 		t.Fatalf("Unexpected value for key %q: %q. Expected %q", key, h.Peek(key), expectedValue)
+	}
+}
+
+func TestResponseHeaderConnectionClose(t *testing.T) {
+	testResponseHeaderConnectionClose(t, true)
+	testResponseHeaderConnectionClose(t, false)
+}
+
+func testResponseHeaderConnectionClose(t *testing.T, connectionClose bool) {
+	h := &ResponseHeader{
+		ConnectionClose: connectionClose,
+	}
+	h.SetContentLength(123)
+
+	w := &bytes.Buffer{}
+	bw := bufio.NewWriter(w)
+	err := h.Write(bw)
+	if err != nil {
+		t.Fatalf("Unexpected error when writing response header: %s", err)
+	}
+	if err := bw.Flush(); err != nil {
+		t.Fatalf("Unexpected error when flushing response header: %s", err)
+	}
+
+	var h1 ResponseHeader
+	br := bufio.NewReader(w)
+	err = h1.Read(br)
+	if err != nil {
+		t.Fatalf("Unexpected error when reading response header: %s", err)
+	}
+	if h1.ConnectionClose != h.ConnectionClose {
+		t.Fatalf("Unexpected value for ConnectionClose: %v. Expected %v", h1.ConnectionClose, h.ConnectionClose)
+	}
+}
+
+func TestRequestHeaderTooBig(t *testing.T) {
+	s := "GET / HTTP/1.1\r\nHost: aaa.com\r\n" + getHeaders(100500) + "\r\n"
+	r := bytes.NewBufferString(s)
+	br := bufio.NewReaderSize(r, 4096)
+	h := &RequestHeader{}
+	err := h.Read(br)
+	if err == nil {
+		t.Fatalf("Expecting error when reading too big header")
 	}
 }
 
@@ -577,6 +670,40 @@ func TestResponseHeaderTooBig(t *testing.T) {
 	}
 }
 
+type bufioPeekReader struct {
+	s string
+	n int
+}
+
+func (r *bufioPeekReader) Read(b []byte) (int, error) {
+	if len(r.s) == 0 {
+		return 0, io.EOF
+	}
+
+	r.n++
+	n := r.n
+	if len(r.s) < n {
+		n = len(r.s)
+	}
+	src := []byte(r.s[:n])
+	r.s = r.s[n:]
+	n = copy(b, src)
+	return n, nil
+}
+
+func TestRequestHeaderBufioPeek(t *testing.T) {
+	r := &bufioPeekReader{
+		s: "GET / HTTP/1.1\r\nHost: foobar.com\r\n" + getHeaders(10) + "\r\naaaa",
+	}
+	br := bufio.NewReaderSize(r, 4096)
+	h := &RequestHeader{}
+	if err := h.Read(br); err != nil {
+		t.Fatalf("Unexpected error when reading request: %s", err)
+	}
+	verifyRequestHeader(t, h, 0, "/", "foobar.com", "", "")
+	verifyTrailer(t, br, "aaaa")
+}
+
 func TestResponseHeaderBufioPeek(t *testing.T) {
 	r := &bufioPeekReader{
 		s: "HTTP/1.1 200 OK\r\nContent-Length: 10\r\nContent-Type: aaa\r\n" + getHeaders(10) + "\r\n0123456789",
@@ -588,6 +715,14 @@ func TestResponseHeaderBufioPeek(t *testing.T) {
 	}
 	verifyResponseHeader(t, h, 200, 10, "aaa")
 	verifyTrailer(t, br, "0123456789")
+}
+
+func getHeaders(n int) string {
+	var h []string
+	for i := 0; i < n; i++ {
+		h = append(h, fmt.Sprintf("Header_%d: Value_%d\r\n", i, i))
+	}
+	return strings.Join(h, "")
 }
 
 func TestResponseHeaderReadSuccess(t *testing.T) {
@@ -680,63 +815,8 @@ func TestResponseHeaderReadSuccess(t *testing.T) {
 	testResponseHeaderReadSuccess(t, h, "HTTP/1.1 200 OK\r\nContent-Type: foo/bar\r\n\r\nabcdefg",
 		200, -2, "foo/bar", "abcdefg")
 	if !h.ConnectionClose {
-		t.Fatalf("unexpected connection: close for identity response")
+		t.Fatalf("expecting connection: close for identity response")
 	}
-}
-
-func TestResponseHeaderReadError(t *testing.T) {
-	h := &ResponseHeader{}
-
-	// incorrect first line
-	testResponseHeaderReadError(t, h, "fo")
-	testResponseHeaderReadError(t, h, "foobarbaz")
-	testResponseHeaderReadError(t, h, "HTTP/1.1")
-	testResponseHeaderReadError(t, h, "HTTP/1.1 ")
-	testResponseHeaderReadError(t, h, "HTTP/1.1 s")
-
-	// non-numeric status code
-	testResponseHeaderReadError(t, h, "HTTP/1.1 foobar OK\r\nContent-Length: 123\r\nContent-Type: text/html\r\n\r\n")
-	testResponseHeaderReadError(t, h, "HTTP/1.1 123foobar OK\r\nContent-Length: 123\r\nContent-Type: text/html\r\n\r\n")
-	testResponseHeaderReadError(t, h, "HTTP/1.1 foobar344 OK\r\nContent-Length: 123\r\nContent-Type: text/html\r\n\r\n")
-
-	// no headers
-	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\n")
-	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\n\r\n")
-
-	// no trailing crlf
-	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\nContent-Length: 123\r\nContent-Type: text/html\r\n")
-
-	// non-numeric content-length
-	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\nContent-Length: faaa\r\nContent-Type: text/html\r\n\r\n")
-	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\nContent-Length: 123aa\r\nContent-Type: text/html\r\n\r\n")
-	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\nContent-Length: aa124\r\nContent-Type: text/html\r\n\r\n")
-
-	// no content-type
-	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\nContent-Length: 123\r\n\r\n")
-}
-
-func TestRequestHeaderTooBig(t *testing.T) {
-	s := "GET / HTTP/1.1\r\nHost: aaa.com\r\n" + getHeaders(100500) + "\r\n"
-	r := bytes.NewBufferString(s)
-	br := bufio.NewReaderSize(r, 4096)
-	h := &RequestHeader{}
-	err := h.Read(br)
-	if err == nil {
-		t.Fatalf("Expecting error when reading too big header")
-	}
-}
-
-func TestRequestHeaderBufioPeek(t *testing.T) {
-	r := &bufioPeekReader{
-		s: "GET / HTTP/1.1\r\nHost: foobar.com\r\n" + getHeaders(10) + "\r\naaaa",
-	}
-	br := bufio.NewReaderSize(r, 4096)
-	h := &RequestHeader{}
-	if err := h.Read(br); err != nil {
-		t.Fatalf("Unexpected error when reading request: %s", err)
-	}
-	verifyRequestHeader(t, h, 0, "/", "foobar.com", "", "")
-	verifyTrailer(t, br, "aaaa")
 }
 
 func TestRequestHeaderReadSuccess(t *testing.T) {
@@ -843,6 +923,37 @@ func TestRequestHeaderReadSuccess(t *testing.T) {
 		0, "/foo/ bar baz", "aa.com", "", "", "xxx")
 }
 
+func TestResponseHeaderReadError(t *testing.T) {
+	h := &ResponseHeader{}
+
+	// incorrect first line
+	testResponseHeaderReadError(t, h, "fo")
+	testResponseHeaderReadError(t, h, "foobarbaz")
+	testResponseHeaderReadError(t, h, "HTTP/1.1")
+	testResponseHeaderReadError(t, h, "HTTP/1.1 ")
+	testResponseHeaderReadError(t, h, "HTTP/1.1 s")
+
+	// non-numeric status code
+	testResponseHeaderReadError(t, h, "HTTP/1.1 foobar OK\r\nContent-Length: 123\r\nContent-Type: text/html\r\n\r\n")
+	testResponseHeaderReadError(t, h, "HTTP/1.1 123foobar OK\r\nContent-Length: 123\r\nContent-Type: text/html\r\n\r\n")
+	testResponseHeaderReadError(t, h, "HTTP/1.1 foobar344 OK\r\nContent-Length: 123\r\nContent-Type: text/html\r\n\r\n")
+
+	// no headers
+	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\n")
+	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\n\r\n")
+
+	// no trailing crlf
+	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\nContent-Length: 123\r\nContent-Type: text/html\r\n")
+
+	// non-numeric content-length
+	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\nContent-Length: faaa\r\nContent-Type: text/html\r\n\r\n")
+	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\nContent-Length: 123aa\r\nContent-Type: text/html\r\n\r\n")
+	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\nContent-Length: aa124\r\nContent-Type: text/html\r\n\r\n")
+
+	// no content-type
+	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\nContent-Length: 123\r\n\r\n")
+}
+
 func TestRequestHeaderReadError(t *testing.T) {
 	h := &RequestHeader{}
 
@@ -871,81 +982,17 @@ func TestRequestHeaderReadError(t *testing.T) {
 	testRequestHeaderReadError(t, h, "POST /abc HTTP/1.1\r\nHost: aa.com\r\nContent-Type: adv\r\n\r\n")
 }
 
-func TestRequestHeaderSetGet(t *testing.T) {
-	h := &RequestHeader{}
-	h.SetRequestURI("/aa/bbb")
-	h.SetMethod("POST")
-	h.Set("foo", "bar")
-	h.Set("host", "12345")
-	h.Set("content-type", "aaa/bbb")
-	h.Set("content-length", "1234")
-	h.Set("user-agent", "aaabbb")
-	h.Set("referer", "axcv")
-	h.Set("baz", "xxxxx")
-	h.Set("transfer-encoding", "chunked")
-	h.Set("connection", "close")
-
-	expectRequestHeaderGet(t, h, "Foo", "bar")
-	expectRequestHeaderGet(t, h, "Host", "12345")
-	expectRequestHeaderGet(t, h, "Content-Type", "aaa/bbb")
-	expectRequestHeaderGet(t, h, "Content-Length", "")
-	expectRequestHeaderGet(t, h, "USER-Agent", "aaabbb")
-	expectRequestHeaderGet(t, h, "Referer", "axcv")
-	expectRequestHeaderGet(t, h, "baz", "xxxxx")
-	expectRequestHeaderGet(t, h, "Transfer-Encoding", "")
-	expectRequestHeaderGet(t, h, "connecTION", "close")
-	if !h.ConnectionClose {
-		t.Fatalf("unset connection: close")
-	}
-
-	if h.ContentLength != 0 {
-		t.Fatalf("Unexpected content-length %d. Expected %d", h.ContentLength, 0)
-	}
-
-	w := &bytes.Buffer{}
-	bw := bufio.NewWriter(w)
-	err := h.Write(bw)
-	if err != nil {
-		t.Fatalf("Unexpected error when writing request header: %s", err)
-	}
-	if err := bw.Flush(); err != nil {
-		t.Fatalf("Unexpected error when flushing request header: %s", err)
-	}
-
-	var h1 RequestHeader
-	br := bufio.NewReader(w)
-	if err = h1.Read(br); err != nil {
-		t.Fatalf("Unexpected error when reading request header: %s", err)
-	}
-
-	if h1.ContentLength != h.ContentLength {
-		t.Fatalf("Unexpected content-length %q. Expected %q", h1.ContentLength, h.ContentLength)
-	}
-
-	expectRequestHeaderGet(t, &h1, "Foo", "bar")
-	expectRequestHeaderGet(t, &h1, "HOST", "12345")
-	expectRequestHeaderGet(t, &h1, "Content-Type", "aaa/bbb")
-	expectRequestHeaderGet(t, &h1, "Content-Length", "")
-	expectRequestHeaderGet(t, &h1, "USER-AGent", "aaabbb")
-	expectRequestHeaderGet(t, &h1, "Referer", "axcv")
-	expectRequestHeaderGet(t, &h1, "baz", "xxxxx")
-	expectRequestHeaderGet(t, &h1, "Transfer-Encoding", "")
-	expectRequestHeaderGet(t, &h1, "Connection", "close")
-	if !h1.ConnectionClose {
-		t.Fatalf("unset connection: close")
-	}
-}
-
-func testRequestHeaderReadSuccess(t *testing.T, h *RequestHeader, headers string, expectedContentLength int,
-	expectedReuqestURI, expectedHost, expectedReferer, expectedContentType, expectedTrailer string) {
+func testResponseHeaderReadError(t *testing.T, h *ResponseHeader, headers string) {
 	r := bytes.NewBufferString(headers)
 	br := bufio.NewReader(r)
 	err := h.Read(br)
-	if err != nil {
-		t.Fatalf("Unexpected error when parsing request headers: %s. headers=%q", err, headers)
+	if err == nil {
+		t.Fatalf("Expecting error when reading response header %q", headers)
 	}
-	verifyRequestHeader(t, h, expectedContentLength, expectedReuqestURI, expectedHost, expectedReferer, expectedContentType)
-	verifyTrailer(t, br, expectedTrailer)
+
+	// make sure response header works after error
+	testResponseHeaderReadSuccess(t, h, "HTTP/1.1 200 OK\r\nContent-Type: foo/bar\r\nContent-Length: 12345\r\n\r\nsss",
+		200, 12345, "foo/bar", "sss")
 }
 
 func testRequestHeaderReadError(t *testing.T, h *RequestHeader, headers string) {
@@ -973,54 +1020,24 @@ func testResponseHeaderReadSuccess(t *testing.T, h *ResponseHeader, headers stri
 	verifyTrailer(t, br, expectedTrailer)
 }
 
-func testResponseHeaderReadError(t *testing.T, h *ResponseHeader, headers string) {
+func testRequestHeaderReadSuccess(t *testing.T, h *RequestHeader, headers string, expectedContentLength int,
+	expectedRequestURI, expectedHost, expectedReferer, expectedContentType, expectedTrailer string) {
 	r := bytes.NewBufferString(headers)
 	br := bufio.NewReader(r)
 	err := h.Read(br)
-	if err == nil {
-		t.Fatalf("Expecting error when reading response header %q", headers)
+	if err != nil {
+		t.Fatalf("Unexpected error when parsing request headers: %s. headers=%q", err, headers)
 	}
-
-	// make sure response header works after error
-	testResponseHeaderReadSuccess(t, h, "HTTP/1.1 200 OK\r\nContent-Type: foo/bar\r\nContent-Length: 12345\r\n\r\nsss",
-		200, 12345, "foo/bar", "sss")
-}
-
-func getHeaders(n int) string {
-	var h []string
-	for i := 0; i < n; i++ {
-		h = append(h, fmt.Sprintf("Header_%d: Value_%d\r\n", i, i))
-	}
-	return strings.Join(h, "")
-}
-
-type bufioPeekReader struct {
-	s string
-	n int
-}
-
-func (r *bufioPeekReader) Read(b []byte) (int, error) {
-	if len(r.s) == 0 {
-		return 0, io.EOF
-	}
-
-	r.n++
-	n := r.n
-	if len(r.s) < n {
-		n = len(r.s)
-	}
-	src := []byte(r.s[:n])
-	r.s = r.s[n:]
-	n = copy(b, src)
-	return n, nil
+	verifyRequestHeader(t, h, expectedContentLength, expectedRequestURI, expectedHost, expectedReferer, expectedContentType)
+	verifyTrailer(t, br, expectedTrailer)
 }
 
 func verifyResponseHeader(t *testing.T, h *ResponseHeader, expectedStatusCode, expectedContentLength int, expectedContentType string) {
 	if h.StatusCode != expectedStatusCode {
 		t.Fatalf("Unexpected status code %d. Expected %d", h.StatusCode, expectedStatusCode)
 	}
-	if h.ContentLength != expectedContentLength {
-		t.Fatalf("Unexpected content length %d. Expected %d", h.ContentLength, expectedContentLength)
+	if h.ContentLength() != expectedContentLength {
+		t.Fatalf("Unexpected content length %d. Expected %d", h.ContentLength(), expectedContentLength)
 	}
 	if string(h.Peek("Content-Type")) != expectedContentType {
 		t.Fatalf("Unexpected content type %q. Expected %q", h.Peek("Content-Type"), expectedContentType)
@@ -1029,8 +1046,8 @@ func verifyResponseHeader(t *testing.T, h *ResponseHeader, expectedStatusCode, e
 
 func verifyRequestHeader(t *testing.T, h *RequestHeader, expectedContentLength int,
 	expectedRequestURI, expectedHost, expectedReferer, expectedContentType string) {
-	if h.ContentLength != expectedContentLength {
-		t.Fatalf("Unexpected Content-Length %d. Expected %d", h.ContentLength, expectedContentLength)
+	if h.ContentLength() != expectedContentLength {
+		t.Fatalf("Unexpected Content-Length %d. Expected %d", h.ContentLength(), expectedContentLength)
 	}
 	if string(h.RequestURI()) != expectedRequestURI {
 		t.Fatalf("Unexpected RequestURI %q. Expected %q", h.RequestURI(), expectedRequestURI)
@@ -1053,11 +1070,5 @@ func verifyTrailer(t *testing.T, r *bufio.Reader, expectedTrailer string) {
 	}
 	if !bytes.Equal(trailer, []byte(expectedTrailer)) {
 		t.Fatalf("Unexpected trailer %q. Expected %q", trailer, expectedTrailer)
-	}
-}
-
-func expectRequestHeaderGet(t *testing.T, h *RequestHeader, key, expectedValue string) {
-	if string(h.Peek(key)) != expectedValue {
-		t.Fatalf("Unexpected value for key %q: %q. Expected %q", key, h.Peek(key), expectedValue)
 	}
 }
