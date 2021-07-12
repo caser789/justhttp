@@ -526,6 +526,9 @@ type RequestHeader struct {
 	bufKV argsKV
 
 	cookies []argsKV
+
+    // aux buffer for Client.
+    clientBuf []byte
 }
 
 // Del deletes header with the given key.
