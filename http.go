@@ -63,7 +63,7 @@ func (req *Request) parseURI() {
 	}
 	req.parsedURI = true
 
-	req.uri.Parse(req.Header.host, req.Header.requestURI)
+	req.uri.Parse(req.Header.host, req.Header.RequestURI())
 }
 
 // ParsePostArgs parses args sent in POST body and fills Request.PostArgs
@@ -128,7 +128,7 @@ func (req *Request) Write(w *bufio.Writer) error {
 	if len(req.Header.host) == 0 {
 		uri := req.URI()
 		req.Header.SetHostBytes(uri.Host)
-		req.Header.requestURI = uri.AppendRequestURI(req.Header.requestURI[:0])
+		req.Header.SetRequestURIBytes(uri.RequestURI())
 	}
 	req.Header.ContentLength = len(req.Body)
 	err := req.Header.Write(w)

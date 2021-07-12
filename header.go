@@ -661,19 +661,23 @@ func (h *RequestHeader) CopyTo(dst *RequestHeader) {
 
 // RequestURI returns RequestURI from the first HTTP request line.
 func (h *RequestHeader) RequestURI() []byte {
-	return h.requestURI
+	requestURI := h.requestURI
+	if len(requestURI) == 0 {
+		requestURI = strSlash
+	}
+	return requestURI
 }
 
 // SetRequestURI sets RequestURI for the first HTTP request line.
 // RequestURI must be properly encoded.
-// Use URI.AppendRequestURI for constructing proper RequestURI if unsure.
+// Use URI.RequestURI for constructing proper RequestURI if unsure.
 func (h *RequestHeader) SetRequestURI(requestURI string) {
 	h.requestURI = AppendBytesStr(h.requestURI, requestURI)
 }
 
 // SetRequestURI sets RequestURI for the first HTTP request ine.
 // RequestURI must be properly encoded.
-// Use URI.AppendRequestURI for constructing proper RequestURI if unsure.
+// Use URI.RequestURI for constructing proper RequestURI if unsure.
 //
 // It is safe modifying requestURI buffer after function return.
 func (h *RequestHeader) SetRequestURIBytes(requestURI []byte) {
@@ -911,7 +915,7 @@ func (h *RequestHeader) parseFirstLine(buf []byte) (b []byte, err error) {
 	if n <= 0 {
 		return nil, fmt.Errorf("cannot find http request method in %q", buf)
 	}
-    h.SetMethodBytes(b[:n])
+	h.SetMethodBytes(b[:n])
 	b = b[n+1:]
 
 	// parse requestURI
@@ -926,7 +930,7 @@ func (h *RequestHeader) parseFirstLine(buf []byte) (b []byte, err error) {
 		// non-http/1.1 protocol. Close connection after the request.
 		h.ConnectionClose = true
 	}
-	h.requestURI = append(h.requestURI[:0], b[:n]...)
+	h.SetRequestURIBytes(b[:n])
 
 	return bNext, nil
 }
@@ -1013,14 +1017,11 @@ func (h *RequestHeader) collectCookies() {
 
 // Write writes request header to w.
 func (h *RequestHeader) Write(w *bufio.Writer) error {
-    method := h.Method()
+	method := h.Method()
 	w.Write(method)
 	w.WriteByte(' ')
 
-	requestURI := h.requestURI
-	if len(requestURI) == 0 {
-		requestURI = strSlash
-	}
+	requestURI := h.RequestURI()
 	w.Write(requestURI)
 	w.WriteByte(' ')
 	w.Write(strHTTP11)

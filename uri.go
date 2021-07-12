@@ -36,7 +36,8 @@ type URI struct {
 	queryArgs       Args
 	parsedQueryArgs bool
 
-	fullURI []byte
+	fullURI    []byte
+	requestURI []byte
 }
 
 // Clear clears uri.
@@ -51,6 +52,7 @@ func (x *URI) Clear() {
 	x.parsedQueryArgs = false
 
 	x.fullURI = x.fullURI[:0]
+	x.requestURI = x.requestURI[:0]
 }
 
 // Parse initializes URI from the given host and uri.
@@ -95,20 +97,18 @@ func (x *URI) FullURI() []byte {
 	dst = append(dst, strColonSlashSlash...)
 	dst = append(dst, x.Host...)
 	lowercaseBytes(dst)
-	x.fullURI = x.AppendRequestURI(dst)
+	x.fullURI = append(dst, x.RequestURI()...)
 	return x.fullURI
 }
 
-// AppendRequestURI appends RequestURI to dst and returns dst
-// (which may be newly allocated).
-//
-// Appended RequestURI doesn't contain Scheme and Host.
-func (x *URI) AppendRequestURI(dst []byte) []byte {
+// RequestURI returns RequestURI - i.e. URI without Scheme and Host.
+func (x *URI) RequestURI() []byte {
 	path := x.Path
 	if len(path) == 0 {
 		path = strSlash
 	}
-	dst = appendQuotedArg(dst, path)
+
+	dst := appendQuotedArg(x.requestURI[:0], path)
 	if x.queryArgs.Len() > 0 {
 		dst = append(dst, '?')
 		dst = x.queryArgs.AppendBytes(dst)
@@ -120,7 +120,8 @@ func (x *URI) AppendRequestURI(dst []byte) []byte {
 		dst = append(dst, '#')
 		dst = append(dst, x.Hash...)
 	}
-	return dst
+	x.requestURI = dst
+	return x.requestURI
 }
 
 func splitHostUri(host, uri []byte) ([]byte, []byte, []byte) {
