@@ -32,14 +32,14 @@ type Request struct {
 
 // SetRequestURI sets RequestURI.
 func (req *Request) SetRequestURI(requestURI string) {
-	req.Header.RequestURI = AppendBytesStr(req.Header.RequestURI[:0], requestURI)
+	req.Header.SetRequestURI(requestURI)
 }
 
 // SetRequestURIBytes sets RequestURI.
 //
 // It is safe using requestURI buffer after the function return.
 func (req *Request) SetRequestURIBytes(requestURI []byte) {
-	req.Header.RequestURI = append(req.Header.RequestURI[:0], requestURI...)
+	req.Header.SetRequestURIBytes(requestURI)
 }
 
 // CopyTo copies req contents to dst
@@ -60,7 +60,7 @@ func (req *Request) ParseURI() {
 	if req.parsedURI {
 		return
 	}
-	req.URI.Parse(req.Header.host, req.Header.RequestURI)
+	req.URI.Parse(req.Header.host, req.Header.requestURI)
 	req.parsedURI = true
 }
 
@@ -122,7 +122,7 @@ func (req *Request) Write(w *bufio.Writer) error {
 	if len(req.Header.host) == 0 {
 		req.ParseURI()
 		req.Header.SetHostBytes(req.URI.Host)
-		req.Header.RequestURI = req.URI.AppendRequestURI(req.Header.RequestURI[:0])
+		req.Header.requestURI = req.URI.AppendRequestURI(req.Header.requestURI[:0])
 	}
 	req.Header.ContentLength = len(req.Body)
 	err := req.Header.Write(w)
