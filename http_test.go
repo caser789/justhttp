@@ -3,6 +3,7 @@ package fasthttp
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -83,186 +84,22 @@ func testResponseBodyStream(t *testing.T, body string, chunked bool) {
 	}
 }
 
-func TestRequestSuccess(t *testing.T) {
-	// empty method, user-agent and body
-	testRequestSuccess(t, "", "/foo/bar", "google.com", "", "", "GET")
-
-	// non-empty user-agent
-	testRequestSuccess(t, "GET", "/foo/bar", "google.com", "MSIE", "", "GET")
-
-	// non-empty method
-	testRequestSuccess(t, "HEAD", "/aaa", "foobar", "", "", "HEAD")
-
-	// POST method with body
-	testRequestSuccess(t, "POST", "/bbb", "aaa.com", "Chrome aaa", "post body", "POST")
-
-	// only host is set
-	testRequestSuccess(t, "", "", "gooble.com", "", "", "GET")
+func TestRound2(t *testing.T) {
+	testRound2(t, 0, 0)
+	testRound2(t, 1, 1)
+	testRound2(t, 2, 2)
+	testRound2(t, 3, 4)
+	testRound2(t, 4, 4)
+	testRound2(t, 5, 8)
+	testRound2(t, 7, 8)
+	testRound2(t, 8, 8)
+	testRound2(t, 9, 16)
+	testRound2(t, 0x10001, 0x20000)
 }
 
-func testRequestSuccess(t *testing.T, method, requestURI, host, userAgent, body, expectedMethod string) {
-	var req Request
-
-	req.Header.SetMethod(method)
-	req.Header.SetRequestURI(requestURI)
-	req.Header.Set("Host", host)
-	req.Header.Set("User-Agent", userAgent)
-	req.Body = []byte(body)
-
-	contentType := "foobar"
-	if method == "POST" {
-		req.Header.Set("Content-Type", contentType)
-	}
-
-	w := &bytes.Buffer{}
-	bw := bufio.NewWriter(w)
-	err := req.Write(bw)
-	if err != nil {
-		t.Fatalf("Unexpected error when calling Request.Write(): %s", err)
-	}
-	if err = bw.Flush(); err != nil {
-		t.Fatalf("Unexpected error when flushing bufio.Writer: %s", err)
-	}
-
-	var req1 Request
-	br := bufio.NewReader(w)
-	if err = req1.Read(br); err != nil {
-		t.Fatalf("Unexpected error when calling Request.Read(): %s", err)
-	}
-	if string(req1.Header.Method()) != expectedMethod {
-		t.Fatalf("Unexpected method: %q. Expected %q", req1.Header.Method(), expectedMethod)
-	}
-	if len(requestURI) == 0 {
-		requestURI = "/"
-	}
-	if string(req1.Header.RequestURI()) != requestURI {
-		t.Fatalf("Unexpected RequestURI: %q. Expected %q", req1.Header.RequestURI(), requestURI)
-	}
-	if string(req1.Header.Peek("Host")) != host {
-		t.Fatalf("Unexpected host: %q. Expected %q", req1.Header.Peek("Host"), host)
-	}
-	if len(userAgent) == 0 {
-		userAgent = string(defaultUserAgent)
-	}
-	if string(req1.Header.Peek("User-Agent")) != userAgent {
-		t.Fatalf("Unexpected user-agent: %q. Expected %q", req1.Header.Peek("User-Agent"), userAgent)
-	}
-	if !bytes.Equal(req1.Body, []byte(body)) {
-		t.Fatalf("Unexpected body: %q. Expected %q", req1.Body, userAgent)
-	}
-
-	if method == "POST" && string(req1.Header.Peek("Content-Type")) != contentType {
-		t.Fatalf("Unexpected content-type: %q. Expected %q", req1.Header.Peek("Content-Type"), contentType)
-	}
-}
-
-func TestRequestWriteError(t *testing.T) {
-	// no host
-	testRequestWriteError(t, "", "/foo/bar", "", "", "")
-
-	// get with body
-	testRequestWriteError(t, "GET", "/foo/bar", "aaa.com", "", "foobar")
-}
-
-func testRequestWriteError(t *testing.T, method, requestURI, host, userAgent, body string) {
-	var req Request
-
-	req.Header.SetMethod(method)
-	req.Header.SetRequestURI(requestURI)
-	req.Header.Set("Host", host)
-	req.Header.Set("User-Agent", userAgent)
-	req.Body = []byte(body)
-
-	w := &bytes.Buffer{}
-	bw := bufio.NewWriter(w)
-	err := req.Write(bw)
-	if err == nil {
-		t.Fatalf("Expecting error when writing request=%#v", req)
-	}
-}
-
-func TestRequestParseURI(t *testing.T) {
-	host := "foobar.com"
-	requestURI := "/aaa/bb+b%20d?ccc=ddd&qqq#1334dfds&=d"
-	expectedPathOriginal := "/aaa/bb+b%20d"
-	expectedPath := "/aaa/bb+b d"
-	expectedQueryString := "ccc=ddd&qqq"
-	expectedHash := "1334dfds&=d"
-
-	var req Request
-	req.Header.Set("Host", host)
-	req.Header.SetRequestURI(requestURI)
-
-	req.ParseURI()
-
-	if string(req.URI.Host) != host {
-		t.Fatalf("Unexpected host %q. Expected %q", req.URI.Host, host)
-	}
-	if string(req.URI.PathOriginal) != expectedPathOriginal {
-		t.Fatalf("Unexpected source path %q. Expected %q", req.URI.PathOriginal, expectedPathOriginal)
-	}
-	if string(req.URI.Path) != expectedPath {
-		t.Fatalf("Unexpected path %q. Expected %q", req.URI.Path, expectedPath)
-	}
-	if string(req.URI.QueryString) != expectedQueryString {
-		t.Fatalf("Unexpected query string %q. Expected %q", req.URI.QueryString, expectedQueryString)
-	}
-	if string(req.URI.Hash) != expectedHash {
-		t.Fatalf("Unexpected hash %q. Expected %q", req.URI.Hash, expectedHash)
-	}
-}
-
-func TestRequestParsePostArgsSuccess(t *testing.T) {
-	var req Request
-
-	testRequestParsePostArgsSuccess(t, &req, "POST / HTTP/1.1\r\nHost: aaa.com\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 0\r\n\r\n", 0, "foo=", "=")
-
-	testRequestParsePostArgsSuccess(t, &req, "POST / HTTP/1.1\r\nHost: aaa.com\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 18\r\n\r\nfoo&b%20r=b+z=&qwe", 3, "foo=", "b r=b z=", "qwe=")
-}
-
-func testRequestParsePostArgsSuccess(t *testing.T, req *Request, s string, expectedArgsLen int, expectedArgs ...string) {
-	r := bytes.NewBufferString(s)
-	br := bufio.NewReader(r)
-	err := req.Read(br)
-	if err != nil {
-		t.Fatalf("Unexpected error when reading %q: %s", s, err)
-	}
-	if err = req.ParsePostArgs(); err != nil {
-		t.Fatalf("Unexpected error when parsing POST args for %q: %s", s, err)
-	}
-	if req.PostArgs.Len() != expectedArgsLen {
-		t.Fatalf("Unexpected args len %d. Expected %d for %q", req.PostArgs.Len(), expectedArgsLen, s)
-	}
-	for _, x := range expectedArgs {
-		tmp := strings.SplitN(x, "=", 2)
-		k := tmp[0]
-		v := tmp[1]
-		vv := string(req.PostArgs.Peek(k))
-		if vv != v {
-			t.Fatalf("Unexpected value for key %q: %q. Expected %q for %q", k, vv, v, s)
-		}
-	}
-}
-
-func TestRequestParsePostArgsError(t *testing.T) {
-	var req Request
-
-	// non-post
-	testRequestParsePostArgsError(t, &req, "GET /aa HTTP/1.1\r\nHost: aaa\r\n\r\n")
-
-	// invalid content-type
-	testRequestParsePostArgsError(t, &req, "POST /aa HTTP/1.1\r\nHost: aaa\r\nContent-Type: text/html\r\nContent-Length: 5\r\n\r\nabcde")
-}
-
-func testRequestParsePostArgsError(t *testing.T, req *Request, s string) {
-	r := bytes.NewBufferString(s)
-	br := bufio.NewReader(r)
-	err := req.Read(br)
-	if err != nil {
-		t.Fatalf("Unexpected error when reading %q: %s", s, err)
-	}
-	if err = req.ParsePostArgs(); err == nil {
-		t.Fatalf("Expecting error when parsing POST args for %q", s)
+func testRound2(t *testing.T, n, expectedRound2 int) {
+	if round2(n) != expectedRound2 {
+		t.Fatalf("Unexpected round2(%d)=%d. Expected %d", n, round2(n), expectedRound2)
 	}
 }
 
@@ -319,6 +156,23 @@ func testResponseReadWithoutBody(t *testing.T, resp *Response, s string, skipBod
 	resp.SkipBody = false
 	testResponseReadSuccess(t, resp, "HTTP/1.1 300 OK\r\nContent-Length: 5\r\nContent-Type: bar\r\n\r\n56789aaa",
 		300, 5, "bar", "56789", "aaa")
+}
+
+func TestRequestSuccess(t *testing.T) {
+	// empty method, user-agent and body
+	testRequestSuccess(t, "", "/foo/bar", "google.com", "", "", "GET")
+
+	// non-empty user-agent
+	testRequestSuccess(t, "GET", "/foo/bar", "google.com", "MSIE", "", "GET")
+
+	// non-empty method
+	testRequestSuccess(t, "HEAD", "/aaa", "fobar", "", "", "HEAD")
+
+	// POST method with body
+	testRequestSuccess(t, "POST", "/bbb", "aaa.com", "Chrome aaa", "post body", "POST")
+
+	// only host is set
+	testRequestSuccess(t, "", "", "gooble.com", "", "", "GET")
 }
 
 func TestResponseSuccess(t *testing.T) {
@@ -383,6 +237,14 @@ func testResponseSuccess(t *testing.T, statusCode int, contentType, serverName, 
 	}
 }
 
+func TestRequestWriteError(t *testing.T) {
+	// no host
+	testRequestWriteError(t, "", "/foo/bar", "", "", "")
+
+	// get with body
+	testRequestWriteError(t, "GET", "/foo/bar", "aaa.com", "", "foobar")
+}
+
 func TestResponseWriteError(t *testing.T) {
 	var resp Response
 
@@ -396,6 +258,79 @@ func TestResponseWriteError(t *testing.T) {
 	}
 }
 
+func testRequestWriteError(t *testing.T, method, requestURI, host, userAgent, body string) {
+	var req Request
+
+	req.Header.SetMethod(method)
+	req.Header.SetRequestURI(requestURI)
+	req.Header.Set("Host", host)
+	req.Header.Set("User-Agent", userAgent)
+	req.Body = []byte(body)
+
+	w := &bytes.Buffer{}
+	bw := bufio.NewWriter(w)
+	err := req.Write(bw)
+	if err == nil {
+		t.Fatalf("Expecting error when writing request=%#v", req)
+	}
+}
+
+func testRequestSuccess(t *testing.T, method, requestURI, host, userAgent, body, expectedMethod string) {
+	var req Request
+
+	req.Header.SetMethod(method)
+	req.Header.SetRequestURI(requestURI)
+	req.Header.Set("Host", host)
+	req.Header.Set("User-Agent", userAgent)
+	req.Body = []byte(body)
+
+	contentType := "foobar"
+	if method == "POST" {
+		req.Header.Set("Content-Type", contentType)
+	}
+
+	w := &bytes.Buffer{}
+	bw := bufio.NewWriter(w)
+	err := req.Write(bw)
+	if err != nil {
+		t.Fatalf("Unexpected error when calling Request.Write(): %s", err)
+	}
+	if err = bw.Flush(); err != nil {
+		t.Fatalf("Unexpected error when flushing bufio.Writer: %s", err)
+	}
+
+	var req1 Request
+	br := bufio.NewReader(w)
+	if err = req1.Read(br); err != nil {
+		t.Fatalf("Unexpected error when calling Request.Read(): %s", err)
+	}
+	if string(req1.Header.Method()) != expectedMethod {
+		t.Fatalf("Unexpected method: %q. Expected %q", req1.Header.Method(), expectedMethod)
+	}
+	if len(requestURI) == 0 {
+		requestURI = "/"
+	}
+	if string(req1.Header.RequestURI()) != requestURI {
+		t.Fatalf("Unexpected RequestURI: %q. Expected %q", req1.Header.RequestURI(), requestURI)
+	}
+	if string(req1.Header.Peek("Host")) != host {
+		t.Fatalf("Unexpected host: %q. Expected %q", req1.Header.Peek("Host"), host)
+	}
+	if len(userAgent) == 0 {
+		userAgent = string(defaultUserAgent)
+	}
+	if string(req1.Header.Peek("User-Agent")) != userAgent {
+		t.Fatalf("Unexpected user-agent: %q. Expected %q", req1.Header.Peek("User-Agent"), userAgent)
+	}
+	if !bytes.Equal(req1.Body, []byte(body)) {
+		t.Fatalf("Unexpected body: %q. Expected %q", req1.Body, body)
+	}
+
+	if method == "POST" && string(req1.Header.Peek("Content-Type")) != contentType {
+		t.Fatalf("Unexpected content-type: %q. Expected %q", req1.Header.Peek("Content-Type"), contentType)
+	}
+}
+
 func TestResponseReadSuccess(t *testing.T) {
 	resp := &Response{}
 
@@ -406,10 +341,6 @@ func TestResponseReadSuccess(t *testing.T) {
 	// zero response
 	testResponseReadSuccess(t, resp, "HTTP/1.1 500 OK\r\nContent-Length: 0\r\nContent-Type: foo/bar\r\n\r\n",
 		500, 0, "foo/bar", "", "")
-
-	// response with trailer
-	testResponseReadSuccess(t, resp, "HTTP/1.1 300 OK\r\nContent-Length: 5\r\nContent-Type: bar\r\n\r\n56789aaa",
-		300, 5, "bar", "56789", "aaa")
 
 	// response with trailer
 	testResponseReadSuccess(t, resp, "HTTP/1.1 300 OK\r\nContent-Length: 5\r\nContent-Type: bar\r\n\r\n56789aaa",
@@ -486,24 +417,161 @@ func testResponseReadSuccess(t *testing.T, resp *Response, response string, expe
 	verifyTrailer(t, rb, expectedTrailer)
 }
 
-func TestRound2(t *testing.T) {
-	testRound2(t, 0, 0)
-	testRound2(t, 1, 1)
-	testRound2(t, 2, 2)
-	testRound2(t, 3, 4)
-	testRound2(t, 4, 4)
-	testRound2(t, 5, 8)
-	testRound2(t, 6, 8)
-	testRound2(t, 7, 8)
-	testRound2(t, 8, 8)
-	testRound2(t, 9, 16)
-	testRound2(t, 0x10001, 0x20000)
+func TestReadBodyFixedSize(t *testing.T) {
+	var b []byte
+
+	// zero-size body
+	testReadBodyFixedSize(t, b, 0)
+
+	// small-size body
+	testReadBodyFixedSize(t, b, 3)
+
+	// medium-size body
+	testReadBodyFixedSize(t, b, 1024)
+
+	// large-size body
+	testReadBodyFixedSize(t, b, 1024*1024)
+
+	// smaller body after big one
+	testReadBodyFixedSize(t, b, 34345)
 }
 
-func testRound2(t *testing.T, n, expectedRound2 int) {
-	if round2(n) != expectedRound2 {
-		t.Fatalf("Unexpected round2(%d)=%d. Expected %d", n, round2(n), expectedRound2)
+func TestReadBodyChunked(t *testing.T) {
+	var b []byte
+
+	// zero-size body
+	testReadBodyChunked(t, b, 0)
+
+	// small-size body
+	testReadBodyChunked(t, b, 5)
+
+	// medium-size body
+	testReadBodyChunked(t, b, 43488)
+
+	// big body
+	testReadBodyChunked(t, b, 3*1024*1024)
+
+	// smaler body after big one
+	testReadBodyChunked(t, b, 12343)
+}
+
+func TestRequestURI(t *testing.T) {
+	host := "foobar.com"
+	requestURI := "/aaa/bb+b%20d?ccc=ddd&qqq#1334dfds&=d"
+	expectedPathOriginal := "/aaa/bb+b%20d"
+	expectedPath := "/aaa/bb+b d"
+	expectedQueryString := "ccc=ddd&qqq"
+	expectedHash := "1334dfds&=d"
+
+	var req Request
+	req.Header.Set("Host", host)
+	req.Header.SetRequestURI(requestURI)
+
+	uri := req.URI()
+	if string(uri.Host) != host {
+		t.Fatalf("Unexpected host %q. Expected %q", uri.Host, host)
 	}
+	if string(uri.PathOriginal) != expectedPathOriginal {
+		t.Fatalf("Unexpected source path %q. Expected %q", uri.PathOriginal, expectedPathOriginal)
+	}
+	if string(uri.Path) != expectedPath {
+		t.Fatalf("Unexpected path %q. Expected %q", uri.Path, expectedPath)
+	}
+	if string(uri.QueryString) != expectedQueryString {
+		t.Fatalf("Unexpected query string %q. Expected %q", uri.QueryString, expectedQueryString)
+	}
+	if string(uri.Hash) != expectedHash {
+		t.Fatalf("Unexpected hash %q. Expected %q", uri.Hash, expectedHash)
+	}
+}
+
+func TestRequestPostArgsSuccess(t *testing.T) {
+	var req Request
+
+	testRequestPostArgsSuccess(t, &req, "POST / HTTP/1.1\r\nHost: aaa.com\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 0\r\n\r\n", 0, "foo=", "=")
+
+	testRequestPostArgsSuccess(t, &req, "POST / HTTP/1.1\r\nHost: aaa.com\r\nContent-Type: application/x-www-form-urlencoded\r\nContent-Length: 18\r\n\r\nfoo&b%20r=b+z=&qwe", 3, "foo=", "b r=b z=", "qwe=")
+}
+
+func TestRequestPostArgsError(t *testing.T) {
+	var req Request
+
+	// non-post
+	testRequestPostArgsError(t, &req, "GET /aa HTTP/1.1\r\nHost: aaa\r\n\r\n")
+
+	// invalid content-type
+	testRequestPostArgsError(t, &req, "POST /aa HTTP/1.1\r\nHost: aaa\r\nContent-Type: text/html\r\nContent-Length: 5\r\n\r\nabcde")
+}
+
+func testRequestPostArgsError(t *testing.T, req *Request, s string) {
+	r := bytes.NewBufferString(s)
+	br := bufio.NewReader(r)
+	err := req.Read(br)
+	if err != nil {
+		t.Fatalf("Unexpected error when reading %q: %s", s, err)
+	}
+	ss := req.PostArgs().String()
+	if len(ss) != 0 {
+		t.Fatalf("unexpected post args: %q. Expecting empty post args", ss)
+	}
+}
+
+func testRequestPostArgsSuccess(t *testing.T, req *Request, s string, expectedArgsLen int, expectedArgs ...string) {
+	r := bytes.NewBufferString(s)
+	br := bufio.NewReader(r)
+	err := req.Read(br)
+	if err != nil {
+		t.Fatalf("Unexpected error when reading %q: %s", s, err)
+	}
+
+	args := req.PostArgs()
+	if args.Len() != expectedArgsLen {
+		t.Fatalf("Unexpected args len %d. Expected %d for %q", args.Len(), expectedArgsLen, s)
+	}
+	for _, x := range expectedArgs {
+		tmp := strings.SplitN(x, "=", 2)
+		k := tmp[0]
+		v := tmp[1]
+		vv := string(args.Peek(k))
+		if vv != v {
+			t.Fatalf("Unexpected value for key %q: %q. Expected %q for %q", k, vv, v, s)
+		}
+	}
+}
+
+func testReadBodyChunked(t *testing.T, b []byte, bodySize int) {
+	body := createFixedBody(bodySize)
+	chunkedBody := createChunkedBody(body)
+	expectedTrailer := []byte("chunked shit")
+	chunkedBody = append(chunkedBody, expectedTrailer...)
+
+	r := bytes.NewBuffer(chunkedBody)
+	br := bufio.NewReader(r)
+	b, err := readBody(br, -1, nil)
+	if err != nil {
+		t.Fatalf("Unexpected error for bodySize=%d: %s. body=%q, chunkedBody=%q", bodySize, err, body, chunkedBody)
+	}
+	if !bytes.Equal(b, body) {
+		t.Fatalf("Unexpected response read for bodySize=%d: %q. Expected %q. chunkedBody=%q", bodySize, b, body, chunkedBody)
+	}
+	verifyTrailer(t, br, string(expectedTrailer))
+}
+
+func testReadBodyFixedSize(t *testing.T, b []byte, bodySize int) {
+	body := createFixedBody(bodySize)
+	expectedTrailer := []byte("traler aaaa")
+	bodyWithTrailer := append(body, expectedTrailer...)
+
+	r := bytes.NewBuffer(bodyWithTrailer)
+	br := bufio.NewReader(r)
+	b, err := readBody(br, bodySize, nil)
+	if err != nil {
+		t.Fatalf("Unexpected error in ReadResponseBody(%d): %s", bodySize, err)
+	}
+	if !bytes.Equal(b, body) {
+		t.Fatalf("Unexpected response read for bodySize=%d: %q. Expected %q", bodySize, b, body)
+	}
+	verifyTrailer(t, br, string(expectedTrailer))
 }
 
 func createFixedBody(bodySize int) []byte {
@@ -512,4 +580,20 @@ func createFixedBody(bodySize int) []byte {
 		b = append(b, byte(i%10)+'0')
 	}
 	return b
+}
+
+func createChunkedBody(body []byte) []byte {
+	var b []byte
+	chunkSize := 1
+	for len(body) > 0 {
+		if chunkSize > len(body) {
+			chunkSize = len(body)
+		}
+		b = append(b, []byte(fmt.Sprintf("%x\r\n", chunkSize))...)
+		b = append(b, body[:chunkSize]...)
+		b = append(b, []byte("\r\n")...)
+		body = body[chunkSize:]
+		chunkSize++
+	}
+	return append(b, []byte("0\r\n\r\n")...)
 }

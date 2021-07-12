@@ -564,16 +564,14 @@ func (ctx *RequestCtx) RequestURI() []byte {
 //
 // The path is valid until returning from RequestHandler
 func (ctx *RequestCtx) Path() []byte {
-	ctx.Request.ParseURI()
-	return ctx.Request.URI.Path
+	return ctx.URI().Path
 }
 
 // Host returns requested host.
 //
 // The host is valid until returning from RequestHandler
 func (ctx *RequestCtx) Host() []byte {
-	ctx.Request.ParseURI()
-	return ctx.Request.URI.Host
+	return ctx.URI().Host
 }
 
 // QueryArgs returns query arguments from RequestURI.
@@ -582,9 +580,7 @@ func (ctx *RequestCtx) Host() []byte {
 //
 // Returned arguments are valid until returning from RequestHandler.
 func (ctx *RequestCtx) QueryArgs() *Args {
-	ctx.Request.ParseURI()
-	ctx.Request.URI.ParseQueryArgs()
-	return &ctx.Request.URI.QueryArgs
+	return &ctx.URI().QueryArgs
 }
 
 // PostArgs returns POST arguments.
@@ -593,8 +589,7 @@ func (ctx *RequestCtx) QueryArgs() *Args {
 //
 // Returned arguments are valid until returning from RequestHandler.
 func (ctx *RequestCtx) PostArgs() *Args {
-	ctx.Request.ParsePostArgs()
-	return &ctx.Request.PostArgs
+	return ctx.Request.PostArgs()
 }
 
 // LocalAddr returns server address for the given request.
@@ -741,6 +736,11 @@ func (ctx *RequestCtx) IsHead() bool {
 	return ctx.Request.Header.IsHead()
 }
 
+// URI returns requested uri.
+func (ctx *RequestCtx) URI() *URI {
+	return ctx.Request.URI()
+}
+
 func writeResponse(ctx *RequestCtx, w *bufio.Writer) error {
 	if len(ctx.timeoutErrMsg) > 0 {
 		panic("BUG: cannot write timed out response")
@@ -769,9 +769,8 @@ func (cl *ctxLogger) Printf(format string, args ...interface{}) {
 	s := fmt.Sprintf(format, args...)
 	ctx := cl.ctx
 	req := &ctx.Request
-	req.ParseURI()
 	cl.logger.Printf("%.3f #%016X - %s<->%s - %s %s - %s",
-		time.Since(ctx.Time).Seconds(), ctx.ID, ctx.LocalAddr(), ctx.RemoteAddr(), req.Header.Method(), req.URI.URI, s)
+		time.Since(ctx.Time).Seconds(), ctx.ID, ctx.LocalAddr(), ctx.RemoteAddr(), req.Header.Method(), ctx.URI().FullURI(), s)
 	ctxLoggerLock.Unlock()
 }
 

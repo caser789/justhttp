@@ -266,7 +266,10 @@ func unhex(c byte) int {
 }
 
 func decodeArg(dst, src []byte, decodePlus bool) []byte {
-	dst = dst[:0]
+	return decodeArgAppend(dst[:0], src, decodePlus)
+}
+
+func decodeArgAppend(dst, src []byte, decodePlus bool) []byte {
 	for i, n := 0, len(src); i < n; i++ {
 		c := src[i]
 		switch c {
