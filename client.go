@@ -32,6 +32,22 @@ func Do(req *Request, resp *Response) error {
 	return defaultClient.Do(req, resp)
 }
 
+// DoTimeout performs the given request and waits for response during
+// the given timeout duration.
+//
+// Request must contain at least non-zero RequestURI with full url (including
+// scheme and host) or non-zero Host header + RequestURI.
+//
+// Client determines the server to be requested in the following order:
+// - from RequestURI if it contains full url with scheme and host;
+// - from Host header otherwise.
+//
+// ErrTimeout is returned if the response wasn't returned during
+// the given timeout.
+func DoTimeout(req *Request, resp *Response, timeout time.Duration) error {
+	return defaultClient.DoTimeout(req, resp, timeout)
+}
+
 // Get fetches url contents into dst.
 //
 // Use Do for request customization.
@@ -69,7 +85,7 @@ type Client struct {
 
 	// Maximum number of connections per each host which may be established.
 	//
-	// DefaultMaxConnsPerHost is used if not set
+	// DefaultMaxConnsPerHost is used if not set.
 	MaxConnsPerHost int
 
 	// Per-connection buffer size for responses' reading.
@@ -93,13 +109,51 @@ type Client struct {
 	ms    map[string]*HostClient
 }
 
+// Get fetches url contents into dst.
+//
+// Use Do for request customization.
+func (c *Client) Get(dst []byte, url string) (statusCode int, body []byte, err error) {
+	return clientGetURL(dst, url, c)
+}
+
+// Post sends POST request to the given url with the given POST arguments.
+//
+// Empty POST body is sent if postArgs is nil.
+//
+// Use Do for request customization.
+func (c *Client) Post(dst []byte, url string, postArgs *Args) (statusCode int, body []byte, err error) {
+	return clientPostURL(dst, url, postArgs, c)
+}
+
+// DoTimeout performs the given request and waits for response during
+// the given timeout duration.
+//
+// Request must contain at least non-zero RequestURI with full url (including
+// scheme and host) or non-zero Host header + RequestURI.
+//
+// Client determines the server to be requested in the following order:
+// - from RequestURI if it contains full url with scheme and host;
+// - from Host header otherwise.
+//
+// ErrTimeout is returned if the response wasn't returned during
+// the given timeout.
+func (c *Client) DoTimeout(req *Request, resp *Response, timeout time.Duration) error {
+	return clientDoTimeout(req, resp, timeout, c)
+}
+
 // Do performs the given http request and fills the given http response.
 //
 // Request must contain at least non-zero RequestURI with full url (including
 // scheme and host) or non-zero Host header + RequestURI.
 //
+// Response is ignored if resp is nil.
+//
+// Client determines the server to be requested in the following order:
+// - from RequestURI if it contains full url with scheme and host;
+// - from Host header otherwise.
+//
 // ErrNoFreeConns is returned if all Client.MaxConnsPerHost connections
-// to the requested host are busy
+// to the requested host are busy.
 func (c *Client) Do(req *Request, resp *Response) error {
 	req.ParseURI()
 	host := req.URI.Host
@@ -155,36 +209,42 @@ func (c *Client) Do(req *Request, resp *Response) error {
 	return hc.Do(req, resp)
 }
 
-// Get fetches url contents into dst.
-//
-// Use Do for request customization
-func (c *Client) Get(dst []byte, url string) (statusCode int, body []byte, err error) {
-	return clientGetURL(dst, url, c)
-}
+func (c *Client) mCleaner(m map[string]*HostClient) {
+	mustStop := false
+	for {
+		t := time.Now()
+		c.mLock.Lock()
+		for k, v := range m {
+			if t.Sub(v.LastUseTime()) > time.Minute {
+				delete(m, k)
+			}
+		}
+		if len(m) == 0 {
+			mustStop = true
+		}
+		c.mLock.Unlock()
 
-// Post sends POST request to the given url with the given POST arguments.
-//
-// Empty POST body is sent if postArgs is nil.
-//
-// Use Do for request customization.
-func (c *Client) Post(dst []byte, url string, postArgs *Args) (statusCode int, body []byte, err error) {
-	return clientPostURL(dst, url, postArgs, c)
+		if mustStop {
+			break
+		}
+		time.Sleep(10 * time.Second)
+	}
 }
 
 // Maximum number of concurrent connections http client can establish per host
 // by default.
-const DefaultMaxConnsPerHost = 10
+const DefaultMaxConnsPerHost = 100
 
 // DialFunc must establish connection to addr.
 //
-// There is no need in establishing TLS(SSL) connection for https urls.
+// There is no need in establishing TLS (SSL) connection for https urls.
 // The client automatically converts connection to TLS if required.
 //
 // Host and optionally port part of url is passed as addr to DialFunc.
 // Example addr values:
-// - foobar.com for http://foobar.com/aaa/bb
-// - foobar.com for https://foobar.com/aaa/bb
-// - foobar.com:8080 for https://foobar.com:8080/aaa/bb
+// - foobar.com       for http://foobar.com/aaa/bb
+// - foobar.com       for https://foobar.com/aaa/bb
+// - foobar.com:8080  for http://foobar.com:8080/aaa/bb
 type DialFunc func(addr string) (net.Conn, error)
 
 // HostClient is a single-host http client. It can make http requests
@@ -260,97 +320,9 @@ func (c *HostClient) LastUseTime() time.Time {
 	return time.Unix(int64(n), 0)
 }
 
-// Do performs the given http request and sets the corresponding response.
-//
-// Request must contain at least non-zero RequestURI with full url (including
-// scheme and host) or non-zero Host header + RequestURI.
-//
-// Response is ignored if resp is nil.
-//
-// Client determines the server to be requested in the following order:
-// - from RequestURI if it contains full url with scheme and host;
-// - from Host header otherwise.
-//
-// ErrNoFreeConns is returned if all HostClient.MaxConns connections
-// to the host are busy.
-func (c *HostClient) Do(req *Request, resp *Response) error {
-	retry, err := c.do(req, resp, false)
-	if err != nil && retry && (req.Header.IsGet() || req.Header.IsHead()) {
-		_, err = c.do(req, resp, true)
-	}
-	return err
-}
-
-func (c *HostClient) do(req *Request, resp *Response, newConn bool) (bool, error) {
-	if req == nil {
-		panic("BUG: req cannot be nil")
-	}
-
-	atomic.StoreUint64(&c.lastUseTime, uint64(time.Now().Unix()))
-
-	cc, err := c.acquireConn(newConn)
-	if err != nil {
-		return false, err
-	}
-	conn := cc.c
-
-	userAgentOld := req.Header.userAgent
-	if len(userAgentOld) == 0 {
-		req.Header.userAgent = c.getClientName()
-	}
-	bw := c.acquireWriter(conn)
-	err = req.Write(bw)
-
-	if len(userAgentOld) == 0 {
-		req.Header.userAgent = userAgentOld
-	}
-
-	if err != nil {
-		c.releaseWriter(bw)
-		c.closeConn(cc)
-		return false, err
-	}
-	if err = bw.Flush(); err != nil {
-		c.releaseWriter(bw)
-		c.closeConn(cc)
-		return true, err
-	}
-	c.releaseWriter(bw)
-
-	nilResp := false
-	if resp == nil {
-		nilResp = true
-		resp = acquireResponse()
-	}
-
-	br := c.acquireReader(conn)
-	if err = resp.Read(br); err != nil {
-		if nilResp {
-			releaseResponse(resp)
-		}
-		c.releaseReader(br)
-		c.closeConn(cc)
-		if err == io.EOF {
-			return true, err
-		}
-		return false, err
-	}
-	c.releaseReader(br)
-
-	if req.Header.ConnectionClose || resp.Header.ConnectionClose {
-		c.closeConn(cc)
-	} else {
-		c.releaseConn(cc)
-	}
-	if nilResp {
-		releaseResponse(resp)
-	}
-	return false, err
-}
-
 // Get fetches url contents into dst.
 //
-// Use Do for request customization
+// Use Do for request customization.
 func (c *HostClient) Get(dst []byte, url string) (statusCode int, body []byte, err error) {
 	return clientGetURL(dst, url, c)
 }
@@ -359,7 +331,7 @@ func (c *HostClient) Get(dst []byte, url string) (statusCode int, body []byte, e
 //
 // Empty POST body is sent if postArgs is nil.
 //
-// Use Do for request customization
+// Use Do for request customization.
 func (c *HostClient) Post(dst []byte, url string, postArgs *Args) (statusCode int, body []byte, err error) {
 	return clientPostURL(dst, url, postArgs, c)
 }
@@ -408,9 +380,191 @@ func doRequest(req *Request, dst []byte, url string, c clientDoer) (statusCode i
 	return statusCode, body, err
 }
 
-// ErrNoFreeConns is returned when no free connections available
-// to the given host.
-var ErrNoFreeConns = errors.New("no free connections available to host")
+var (
+	requestPool  sync.Pool
+	responsePool sync.Pool
+)
+
+func acquireRequest() *Request {
+	v := requestPool.Get()
+	if v == nil {
+		return &Request{}
+	}
+	return v.(*Request)
+}
+
+func releaseRequest(req *Request) {
+	req.Clear()
+	requestPool.Put(req)
+}
+
+func acquireResponse() *Response {
+	v := responsePool.Get()
+	if v == nil {
+		return &Response{}
+	}
+	return v.(*Response)
+}
+
+func releaseResponse(resp *Response) {
+	resp.Clear()
+	responsePool.Put(resp)
+}
+
+// DoTimeout performs the given request and waits for response during
+// the given timeout duration.
+//
+// Request must contain at least non-zero RequestURI with full url (including
+// scheme and host) or non-zero Host header + RequestURI.
+//
+// ErrTimeout is returned if the response wasn't returned during
+// the given timeout.
+func (c *HostClient) DoTimeout(req *Request, resp *Response, timeout time.Duration) error {
+	return clientDoTimeout(req, resp, timeout, c)
+}
+
+func clientDoTimeout(req *Request, resp *Response, timeout time.Duration, c clientDoer) error {
+	var ch chan error
+	chv := errorChPool.Get()
+	if chv == nil {
+		ch = make(chan error, 1)
+	} else {
+		ch = chv.(chan error)
+	}
+
+	// make req and resp copies, since on timeout they no longer
+	// may accessed.
+	reqCopy := acquireRequest()
+	req.CopyTo(reqCopy)
+	respCopy := acquireResponse()
+
+	go func() {
+		ch <- c.Do(reqCopy, respCopy)
+	}()
+
+	var tc *time.Timer
+	tcv := timerPool.Get()
+	if tcv == nil {
+		tc = time.NewTimer(timeout)
+	} else {
+		tc = tcv.(*time.Timer)
+		initTimer(tc, timeout)
+	}
+
+	var err error
+	select {
+	case err = <-ch:
+		resp.CopyTo(respCopy)
+		releaseResponse(respCopy)
+		releaseRequest(reqCopy)
+		errorChPool.Put(chv)
+	case <-tc.C:
+		err = ErrTimeout
+	}
+
+	stopTimer(tc)
+	timerPool.Put(tcv)
+
+	return err
+}
+
+var (
+	errorChPool sync.Pool
+	timerPool   sync.Pool
+)
+
+// Do performs the given http request and sets the corresponding response.
+//
+// Request must contain at least non-zero RequestURI with full url (including
+// scheme and host) or non-zero Host header + RequestURI.
+//
+// Response is ignored if resp is nil.
+//
+// ErrNoFreeConns is returned if all HostClient.MaxConns connections
+// to the host are busy.
+func (c *HostClient) Do(req *Request, resp *Response) error {
+	retry, err := c.do(req, resp, false)
+	if err != nil && retry && (req.Header.IsGet() || req.Header.IsHead()) {
+		_, err = c.do(req, resp, true)
+	}
+	return err
+}
+
+func (c *HostClient) do(req *Request, resp *Response, newConn bool) (bool, error) {
+	if req == nil {
+		panic("BUG: req cannot be nil")
+	}
+
+	atomic.StoreUint64(&c.lastUseTime, uint64(time.Now().Unix()))
+
+	cc, err := c.acquireConn(newConn)
+	if err != nil {
+		return false, err
+	}
+	conn := cc.c
+
+	userAgentOld := req.Header.userAgent
+	if len(userAgentOld) == 0 {
+		req.Header.userAgent = c.getClientName()
+	}
+	bw := c.acquireWriter(conn)
+	err = req.Write(bw)
+	if len(userAgentOld) == 0 {
+		req.Header.userAgent = userAgentOld
+	}
+
+	if err != nil {
+		c.releaseWriter(bw)
+		c.closeConn(cc)
+		return false, err
+	}
+	if err = bw.Flush(); err != nil {
+		c.releaseWriter(bw)
+		c.closeConn(cc)
+		return true, err
+	}
+	c.releaseWriter(bw)
+
+	nilResp := false
+	if resp == nil {
+		nilResp = true
+		resp = acquireResponse()
+	}
+
+	br := c.acquireReader(conn)
+	if err = resp.Read(br); err != nil {
+		if nilResp {
+			releaseResponse(resp)
+		}
+		c.releaseReader(br)
+		c.closeConn(cc)
+		if err == io.EOF {
+			return true, err
+		}
+		return false, err
+	}
+	c.releaseReader(br)
+
+	if req.Header.ConnectionClose || resp.Header.ConnectionClose {
+		c.closeConn(cc)
+	} else {
+		c.releaseConn(cc)
+	}
+
+	if nilResp {
+		releaseResponse(resp)
+	}
+	return false, err
+}
+
+var (
+	// ErrNoFreeConns is returned when no free connections available
+	// to the given host.
+	ErrNoFreeConns = errors.New("no free connections available to host")
+
+	// ErrTimeout is returned from timed out calls.
+	ErrTimeout = errors.New("timeout")
+)
 
 func (c *HostClient) acquireConn(newConn bool) (*clientConn, error) {
 	var cc *clientConn
@@ -481,28 +635,6 @@ func (c *HostClient) connsCleaner() {
 			break
 		}
 		time.Sleep(time.Second)
-	}
-}
-
-func (c *Client) mCleaner(m map[string]*HostClient) {
-	mustStop := false
-	for {
-		t := time.Now()
-		c.mLock.Lock()
-		for k, v := range m {
-			if t.Sub(v.LastUseTime()) > time.Minute {
-				delete(m, k)
-			}
-		}
-		if len(m) == 0 {
-			mustStop = true
-		}
-		c.mLock.Unlock()
-
-		if mustStop {
-			break
-		}
-		time.Sleep(10 * time.Second)
 	}
 }
 
@@ -654,21 +786,6 @@ func (c *HostClient) getTCPAddr(addr string) (*net.TCPAddr, error) {
 	return tcpAddr, nil
 }
 
-func (c *HostClient) getClientName() []byte {
-	v := c.clientName.Load()
-	var clientName []byte
-	if v == nil {
-		clientName = []byte(c.Name)
-		if len(clientName) == 0 {
-			clientName = defaultUserAgent
-		}
-		c.clientName.Store(clientName)
-	} else {
-		clientName = v.([]byte)
-	}
-	return clientName
-}
-
 func resolveTCPAddrs(addr string, isTLS bool) ([]net.TCPAddr, error) {
 	host := addr
 	port := 80
@@ -701,33 +818,17 @@ func resolveTCPAddrs(addr string, isTLS bool) ([]net.TCPAddr, error) {
 	return addrs, nil
 }
 
-var (
-	requestPool  sync.Pool
-	responsePool sync.Pool
-)
-
-func acquireRequest() *Request {
-	v := requestPool.Get()
+func (c *HostClient) getClientName() []byte {
+	v := c.clientName.Load()
+	var clientName []byte
 	if v == nil {
-		return &Request{}
+		clientName = []byte(c.Name)
+		if len(clientName) == 0 {
+			clientName = defaultUserAgent
+		}
+		c.clientName.Store(clientName)
+	} else {
+		clientName = v.([]byte)
 	}
-	return v.(*Request)
-}
-
-func releaseRequest(req *Request) {
-	req.Clear()
-	requestPool.Put(req)
-}
-
-func acquireResponse() *Response {
-	v := responsePool.Get()
-	if v == nil {
-		return &Response{}
-	}
-	return v.(*Response)
-}
-
-func releaseResponse(resp *Response) {
-	resp.Clear()
-	responsePool.Put(resp)
+	return clientName
 }
