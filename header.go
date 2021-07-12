@@ -630,8 +630,9 @@ func (h *RequestHeader) VisitAll(f func(key, value []byte)) {
 	if len(contentType) > 0 {
 		f(strContentType, contentType)
 	}
-	if len(h.userAgent) > 0 {
-		f(strUserAgent, h.userAgent)
+	userAgent := h.UserAgent()
+	if len(userAgent) > 0 {
+		f(strUserAgent, userAgent)
 	}
 
 	h.collectCookies()
@@ -786,7 +787,7 @@ func (h *RequestHeader) SetCanonical(key, value []byte) {
 	case bytes.Equal(strContentType, key):
 		h.SetContentTypeBytes(value)
 	case bytes.Equal(strUserAgent, key):
-		h.userAgent = append(h.userAgent[:0], value...)
+		h.SetUserAgentBytes(value)
 	case bytes.Equal(strContentLength, key):
 		// Content-Length is managed automatically
 	case bytes.Equal(strConnection, key):
@@ -844,7 +845,7 @@ func (h *RequestHeader) peek(key []byte) []byte {
 	case bytes.Equal(strContentType, key):
 		return h.ContentType()
 	case bytes.Equal(strUserAgent, key):
-		return h.userAgent
+		return h.UserAgent()
 	case bytes.Equal(strConnection, key):
 		if h.ConnectionClose {
 			return strClose
@@ -948,7 +949,7 @@ func (h *RequestHeader) parseHeaders(buf []byte) ([]byte, error) {
 		case bytes.Equal(s.key, strHost):
 			h.SetHostBytes(s.value)
 		case bytes.Equal(s.key, strUserAgent):
-			h.userAgent = append(h.userAgent[:0], s.value...)
+			h.SetUserAgentBytes(s.value)
 		case bytes.Equal(s.key, strContentType):
 			h.SetContentTypeBytes(s.value)
 		case bytes.Equal(s.key, strContentLength):
@@ -1028,7 +1029,7 @@ func (h *RequestHeader) Write(w *bufio.Writer) error {
 	w.Write(strHTTP11)
 	w.Write(strCRLF)
 
-	userAgent := h.userAgent
+	userAgent := h.UserAgent()
 	if len(userAgent) == 0 {
 		userAgent = defaultUserAgent
 	}
