@@ -622,6 +622,16 @@ func TestResponseHeaderReadSuccess(t *testing.T) {
 	// blank lines before the first line
 	testResponseHeaderReadSuccess(t, h, "\r\nHTTP/1.1 200 OK\r\nContent-Type: aa\r\nContent-Length: 0\r\n\r\nsss",
 		200, 0, "aa", "sss")
+	if h.ConnectionClose {
+		t.Fatalf("unexpected connection: close")
+	}
+
+	// no content-length (identity transfer-encoding)
+	testResponseHeaderReadSuccess(t, h, "HTTP/1.1 200 OK\r\nContent-Type: foo/bar\r\n\r\nabcdefg",
+		200, -2, "foo/bar", "abcdefg")
+	if !h.ConnectionClose {
+		t.Fatalf("unexpected connection: close for identity response")
+	}
 }
 
 func TestResponseHeaderReadError(t *testing.T) {
@@ -653,9 +663,6 @@ func TestResponseHeaderReadError(t *testing.T) {
 
 	// no content-type
 	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\nContent-Length: 123\r\n\r\n")
-
-	// no content-length
-	testResponseHeaderReadError(t, h, "HTTP/1.1 200 OK\r\nContent-Type: foo/bar\r\n\r\n")
 }
 
 func TestRequestHeaderTooBig(t *testing.T) {

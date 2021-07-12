@@ -40,7 +40,9 @@ type ResponseHeader struct {
 
 	// Resposne content length read from Content-Length header.
 	//
-	// It may be negative on chunked response.
+	// It may be negative:
+	// -1 means Transfer-Encoding: chunked.
+	// -2 means Transfer-Encoding: identity.
 	ContentLength int
 
 	contentType []byte
@@ -297,6 +299,7 @@ func (h *ResponseHeader) parseFirstLine(buf []byte) (b []byte, err error) {
 }
 
 func (h *ResponseHeader) parseHeaders(buf []byte) ([]byte, error) {
+	// 'identity' content-length by default
 	h.ContentLength = -2
 
 	var s headerScanner
@@ -320,7 +323,7 @@ func (h *ResponseHeader) parseHeaders(buf []byte) ([]byte, error) {
 				}
 			}
 		case bytes.Equal(s.key, strTransferEncoding):
-			if bytes.Equal(s.value, strChunked) {
+			if !bytes.Equal(s.value, strIdentity) {
 				h.ContentLength = -1
 			}
 		case bytes.Equal(s.key, strConnection):
@@ -345,7 +348,8 @@ func (h *ResponseHeader) parseHeaders(buf []byte) ([]byte, error) {
 		return nil, fmt.Errorf("missing required Content-Type header in %q", buf)
 	}
 	if h.ContentLength == -2 {
-		return nil, fmt.Errorf("missing both Content-Length and Transfer-Encoding: chunked in %q", buf)
+		// Close connection after 'identity' response.
+		h.ConnectionClose = true
 	}
 	return s.b, nil
 }
@@ -507,7 +511,8 @@ type RequestHeader struct {
 
 	// Request content length read from Content-Length header.
 	//
-	// It may be negative on chunked request.
+	// It may be negative:
+	// -1 means Transfer-Encoding: chunked.
 	ContentLength int
 
 	// Set to true if request contains 'Connection: close' header.
@@ -865,7 +870,7 @@ func (h *RequestHeader) parseHeaders(buf []byte) ([]byte, error) {
 				}
 			}
 		case bytes.Equal(s.key, strTransferEncoding):
-			if bytes.Equal(s.value, strChunked) {
+			if !bytes.Equal(s.value, strIdentity) {
 				h.ContentLength = -1
 			}
 		case bytes.Equal(s.key, strConnection):
