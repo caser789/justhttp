@@ -911,7 +911,7 @@ func (h *RequestHeader) parseFirstLine(buf []byte) (b []byte, err error) {
 	if n <= 0 {
 		return nil, fmt.Errorf("cannot find http request method in %q", buf)
 	}
-	h.method = append(h.method[:0], b[:n]...)
+    h.SetMethodBytes(b[:n])
 	b = b[n+1:]
 
 	// parse requestURI
@@ -1013,10 +1013,7 @@ func (h *RequestHeader) collectCookies() {
 
 // Write writes request header to w.
 func (h *RequestHeader) Write(w *bufio.Writer) error {
-	method := h.method
-	if len(method) == 0 {
-		method = strGet
-	}
+    method := h.Method()
 	w.Write(method)
 	w.WriteByte(' ')
 
