@@ -142,8 +142,8 @@ func (h *ResponseHeader) CopyTo(dst *ResponseHeader) {
 // f must not retain references to key and/or value after returning.
 // Copy key and/or value contents before returning if you need retaining them.
 func (h *ResponseHeader) VisitAll(f func(key, value []byte)) {
-	if len(h.contentType) > 0 {
-		f(strContentType, h.contentType)
+	if len(h.ContentType()) > 0 {
+		f(strContentType, h.ContentType())
 	}
 	if len(h.server) > 0 {
 		f(strServer, h.server)
@@ -201,7 +201,7 @@ func (h *ResponseHeader) Write(w *bufio.Writer) error {
 	writeHeaderLine(w, strServer, server)
 	writeHeaderLine(w, strDate, serverDate.Load().([]byte))
 
-	contentType := h.contentType
+	contentType := h.ContentType()
 	if len(contentType) == 0 {
 		contentType = defaultContentType
 	}
@@ -324,7 +324,7 @@ func (h *ResponseHeader) parseHeaders(buf []byte) ([]byte, error) {
 	for s.next() {
 		switch {
 		case bytes.Equal(s.key, strContentType):
-			h.contentType = append(h.contentType[:0], s.value...)
+			h.SetContentTypeBytes(s.value)
 		case bytes.Equal(s.key, strServer):
 			h.server = append(h.server[:0], s.value...)
 		case bytes.Equal(s.key, strContentLength):
@@ -359,7 +359,7 @@ func (h *ResponseHeader) parseHeaders(buf []byte) ([]byte, error) {
 		return nil, s.err
 	}
 
-	if len(h.contentType) == 0 {
+	if len(h.ContentType()) == 0 {
 		return nil, fmt.Errorf("missing required Content-Type header in %q", buf)
 	}
 	if h.ContentLength == -2 {
@@ -447,7 +447,7 @@ func (h *ResponseHeader) Set(key, value string) {
 func (h *ResponseHeader) SetCanonical(key, value []byte) {
 	switch {
 	case bytes.Equal(strContentType, key):
-		h.contentType = append(h.contentType[:0], value...)
+		h.SetContentTypeBytes(value)
 	case bytes.Equal(strServer, key):
 		h.server = append(h.server[:0], value...)
 	case bytes.Equal(strContentLength, key):
@@ -537,7 +537,7 @@ func (h *ResponseHeader) PeekBytes(key []byte) []byte {
 func (h *ResponseHeader) peek(key []byte) []byte {
 	switch {
 	case bytes.Equal(strContentType, key):
-		return h.contentType
+		return h.ContentType()
 	case bytes.Equal(strServer, key):
 		return h.server
 	case bytes.Equal(strConnection, key):
@@ -606,8 +606,8 @@ func (h *RequestHeader) VisitAll(f func(key, value []byte)) {
 	if len(h.host) > 0 {
 		f(strHost, h.host)
 	}
-	if len(h.contentType) > 0 {
-		f(strContentType, h.contentType)
+	if len(h.ContentType()) > 0 {
+		f(strContentType, h.ContentType())
 	}
 	if len(h.userAgent) > 0 {
 		f(strUserAgent, h.userAgent)
@@ -759,7 +759,7 @@ func (h *RequestHeader) SetCanonical(key, value []byte) {
 	case bytes.Equal(strHost, key):
 		h.host = append(h.host[:0], value...)
 	case bytes.Equal(strContentType, key):
-		h.contentType = append(h.contentType[:0], value...)
+		h.SetContentTypeBytes(value)
 	case bytes.Equal(strUserAgent, key):
 		h.userAgent = append(h.userAgent[:0], value...)
 	case bytes.Equal(strContentLength, key):
@@ -817,7 +817,7 @@ func (h *RequestHeader) peek(key []byte) []byte {
 	case bytes.Equal(strHost, key):
 		return h.host
 	case bytes.Equal(strContentType, key):
-		return h.contentType
+		return h.ContentType()
 	case bytes.Equal(strUserAgent, key):
 		return h.userAgent
 	case bytes.Equal(strConnection, key):
@@ -925,7 +925,7 @@ func (h *RequestHeader) parseHeaders(buf []byte) ([]byte, error) {
 		case bytes.Equal(s.key, strUserAgent):
 			h.userAgent = append(h.userAgent[:0], s.value...)
 		case bytes.Equal(s.key, strContentType):
-			h.contentType = append(h.contentType[:0], s.value...)
+			h.SetContentTypeBytes(s.value)
 		case bytes.Equal(s.key, strContentLength):
 			if h.ContentLength != -1 {
 				h.ContentLength, err = parseContentLength(s.value)
@@ -959,7 +959,7 @@ func (h *RequestHeader) parseHeaders(buf []byte) ([]byte, error) {
 	}
 
 	if h.IsPost() {
-		if len(h.contentType) == 0 {
+		if len(h.ContentType()) == 0 {
 			return nil, fmt.Errorf("missing Content-Type for POST header in %q", buf)
 		}
 		if h.ContentLength == -2 {
@@ -1022,7 +1022,7 @@ func (h *RequestHeader) Write(w *bufio.Writer) error {
 	writeHeaderLine(w, strHost, host)
 
 	if h.IsPost() {
-		contentType := h.contentType
+		contentType := h.ContentType()
 		if len(contentType) == 0 {
 			return fmt.Errorf("missing required Content-Type header for POST request")
 		}
