@@ -43,6 +43,18 @@ func (a *Args) Len() int {
 	return len(a.args)
 }
 
+// SetUint sets uint value for the given key.
+func (a *Args) SetUint(key string, value int) {
+	a.bufKV.key = AppendBytesStr(a.bufKV.key[:0], key)
+	a.SetUintBytes(a.bufKV.key, value)
+}
+
+// SetUintBytes sets uint value for the given key.
+func (a *Args) SetUintBytes(key []byte, value int) {
+	a.bufKV.value = AppendUint(a.bufKV.value[:0], value)
+	a.SetBytesKV(key, a.bufKV.value)
+}
+
 // Set sets 'key=value' argument.
 func (a *Args) Set(key, value string) {
 	a.bufKV.value = AppendBytesStr(a.bufKV.value[:0], value)
