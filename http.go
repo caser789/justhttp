@@ -41,6 +41,16 @@ func (w requestBodyWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// ConnectionClose returns true if 'Connection: close' header is set
+func (req *Request) ConnectionClose() bool {
+	return req.Header.ConnectionClose()
+}
+
+// SetConnectionClose sets 'Connection: close' header.
+func (req *Request) SetConnectionClose() {
+	req.Header.SetConnectionClose()
+}
+
 // Body returns request body.
 func (req *Request) Body() []byte {
 	return req.body
@@ -317,6 +327,16 @@ type responseBodyWriter struct {
 func (w responseBodyWriter) Write(p []byte) (int, error) {
 	w.Response.body = append(w.body, p...)
 	return len(p), nil
+}
+
+// ConnectionClose returns true if 'Connection: close' header is set.
+func (resp *Response) ConnectionClose() bool {
+	return resp.Header.ConnectionClose()
+}
+
+// SetConnectionClose sets 'Connection: close' header.
+func (resp *Response) SetConnectionClose() {
+	resp.Header.SetConnectionClose()
 }
 
 // Body returns response body.
