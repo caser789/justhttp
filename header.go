@@ -32,8 +32,7 @@ func refreshServerDate() {
 // It is forbidden copying ResponseHeader instances.
 // Create new instances instead and use CopyTo.
 type ResponseHeader struct {
-	// Set to tru if response contains 'Connection: close' header.
-	ConnectionClose bool
+	connectionClose bool
 
 	// Response status code.
 	StatusCode int
@@ -48,6 +47,16 @@ type ResponseHeader struct {
 	bufKV argsKV
 
 	cookies []argsKV
+}
+
+// ConnectionClose returns true if 'Connection: close' header is set.
+func (h *ResponseHeader) ConnectionClose() bool {
+	return h.connectionClose
+}
+
+// SetConnectionClose sets 'Connection: close' header.
+func (h *ResponseHeader) SetConnectionClose() {
+	h.connectionClose = true
 }
 
 // ContentLength returns Content-Length header value.
@@ -73,6 +82,7 @@ func (h *ResponseHeader) SetContentLength(contentLength int) {
 		h.contentLengthBytes = h.contentLengthBytes[:0]
 		value := strChunked
 		if contentLength == -2 {
+			h.SetConnectionClose()
 			value = strIdentity
 		}
 		h.h = setArg(h.h, strTransferEncoding, value)
@@ -171,7 +181,7 @@ func (h *ResponseHeader) DelBytes(key []byte) {
 func (h *ResponseHeader) CopyTo(dst *ResponseHeader) {
 	dst.Clear()
 	dst.StatusCode = h.StatusCode
-	dst.ConnectionClose = h.ConnectionClose
+	dst.connectionClose = h.connectionClose
 	dst.contentLength = h.contentLength
 	dst.contentLengthBytes = append(dst.contentLengthBytes[:0], h.contentLengthBytes...)
 	dst.contentType = append(dst.contentType[:0], h.contentType...)
@@ -202,7 +212,7 @@ func (h *ResponseHeader) VisitAll(f func(key, value []byte)) {
 		})
 	}
 	visitArgs(h.h, f)
-	if h.ConnectionClose {
+	if h.ConnectionClose() {
 		f(strConnection, strClose)
 	}
 }
@@ -210,7 +220,7 @@ func (h *ResponseHeader) VisitAll(f func(key, value []byte)) {
 // Clear clears response header.
 func (h *ResponseHeader) Clear() {
 	h.StatusCode = 0
-	h.ConnectionClose = false
+	h.connectionClose = false
 
 	h.contentLength = 0
 	h.contentLengthBytes = h.contentLengthBytes[:0]
@@ -274,7 +284,7 @@ func (h *ResponseHeader) Write(w *bufio.Writer) error {
 		}
 	}
 
-	if h.ConnectionClose {
+	if h.ConnectionClose() {
 		writeHeaderLine(w, strConnection, strClose)
 	}
 
@@ -345,7 +355,7 @@ func (h *ResponseHeader) parseFirstLine(buf []byte) (b []byte, err error) {
 	}
 	if !bytes.Equal(b[:n], strHTTP11) {
 		// Non-http/1.1 response. Close connection after it.
-		h.ConnectionClose = true
+		h.SetConnectionClose()
 	}
 	b = b[n+1:]
 
@@ -394,7 +404,7 @@ func (h *ResponseHeader) parseHeaders(buf []byte) ([]byte, error) {
 			}
 		case bytes.Equal(s.key, strConnection):
 			if bytes.Equal(s.value, strClose) {
-				h.ConnectionClose = true
+				h.SetConnectionClose()
 			}
 		case bytes.Equal(s.key, strSetCookie):
 			h.cookies, kv = allocArg(h.cookies)
@@ -414,11 +424,19 @@ func (h *ResponseHeader) parseHeaders(buf []byte) ([]byte, error) {
 		return nil, fmt.Errorf("missing required Content-Type header in %q", buf)
 	}
 	if contentLength == -2 {
-		// Close connection after 'identity' response.
-		h.ConnectionClose = true
 		h.SetContentLength(contentLength)
 	}
 	return s.b, nil
+}
+
+// ConnectionClose returns true if 'Connection: close' header is set.
+func (h *RequestHeader) ConnectionClose() bool {
+	return h.connectionClose
+}
+
+// SetConnectionClose sets 'Connection: close' header.
+func (h *RequestHeader) SetConnectionClose() {
+	h.connectionClose = true
 }
 
 // ContentLength returns Content-Length header value.
@@ -537,7 +555,7 @@ func (h *ResponseHeader) SetCanonical(key, value []byte) {
 		}
 	case bytes.Equal(strConnection, key):
 		if bytes.Equal(strClose, value) {
-			h.ConnectionClose = true
+			h.SetConnectionClose()
 		}
 		// skip other 'Connection' shit :)
 	case bytes.Equal(strTransferEncoding, key):
@@ -619,7 +637,7 @@ func (h *ResponseHeader) peek(key []byte) []byte {
 	case bytes.Equal(strServer, key):
 		return h.Server()
 	case bytes.Equal(strConnection, key):
-		if h.ConnectionClose {
+		if h.ConnectionClose() {
 			return strClose
 		}
 		return nil
@@ -635,8 +653,7 @@ func (h *ResponseHeader) peek(key []byte) []byte {
 // It is forbidden copying RequestHeader instances.
 // Create new instances instead and use CopyTo.
 type RequestHeader struct {
-	// Set to true if request contains 'Connection: close' header.
-	ConnectionClose bool
+	connectionClose bool
 
 	contentLength      int
 	contentLengthBytes []byte
@@ -702,7 +719,7 @@ func (h *RequestHeader) VisitAll(f func(key, value []byte)) {
 		f(strCookie, h.bufKV.value)
 	}
 	visitArgs(h.h, f)
-	if h.ConnectionClose {
+	if h.ConnectionClose() {
 		f(strConnection, strClose)
 	}
 }
@@ -710,7 +727,7 @@ func (h *RequestHeader) VisitAll(f func(key, value []byte)) {
 // CopyTo copies all the headers to dst.
 func (h *RequestHeader) CopyTo(dst *RequestHeader) {
 	dst.Clear()
-	dst.ConnectionClose = h.ConnectionClose
+	dst.connectionClose = h.connectionClose
 	dst.contentLength = h.contentLength
 	dst.contentLengthBytes = append(dst.contentLengthBytes[:0], h.contentLengthBytes...)
 	dst.method = append(dst.method[:0], h.host...)
@@ -807,7 +824,7 @@ func (h *RequestHeader) SetCookieBytesKV(key, value []byte) {
 
 // Clear clears request header
 func (h *RequestHeader) Clear() {
-	h.ConnectionClose = false
+	h.connectionClose = false
 
 	h.contentLength = 0
 	h.contentLengthBytes = h.contentLengthBytes[:0]
@@ -862,7 +879,7 @@ func (h *RequestHeader) SetCanonical(key, value []byte) {
 		}
 	case bytes.Equal(strConnection, key):
 		if bytes.Equal(strClose, value) {
-			h.ConnectionClose = true
+			h.SetConnectionClose()
 		}
 		// skip other 'Connection' shit :)
 	case bytes.Equal(strTransferEncoding, key):
@@ -914,7 +931,7 @@ func (h *RequestHeader) peek(key []byte) []byte {
 	case bytes.Equal(strUserAgent, key):
 		return h.UserAgent()
 	case bytes.Equal(strConnection, key):
-		if h.ConnectionClose {
+		if h.ConnectionClose() {
 			return strClose
 		}
 		return nil
@@ -993,13 +1010,13 @@ func (h *RequestHeader) parseFirstLine(buf []byte) (b []byte, err error) {
 	n = bytes.LastIndexByte(b, ' ')
 	if n < 0 {
 		// no http protocol found. Close connection after the request.
-		h.ConnectionClose = true
+		h.SetConnectionClose()
 		n = len(b)
 	} else if n == 0 {
 		return nil, fmt.Errorf("RequestURI cannot be empty in %q", buf)
 	} else if !bytes.Equal(b[n+1:], strHTTP11) {
 		// non-http/1.1 protocol. Close connection after the request.
-		h.ConnectionClose = true
+		h.SetConnectionClose()
 	}
 	h.SetRequestURIBytes(b[:n])
 
@@ -1040,7 +1057,7 @@ func (h *RequestHeader) parseHeaders(buf []byte) ([]byte, error) {
 			}
 		case bytes.Equal(s.key, strConnection):
 			if bytes.Equal(s.key, strConnection) {
-				h.ConnectionClose = true
+				h.SetConnectionClose()
 			}
 		default:
 			h.h, kv = allocArg(h.h)
@@ -1138,7 +1155,7 @@ func (h *RequestHeader) Write(w *bufio.Writer) error {
 		writeHeaderLine(w, strCookie, h.bufKV.value)
 	}
 
-	if h.ConnectionClose {
+	if h.ConnectionClose() {
 		writeHeaderLine(w, strConnection, strClose)
 	}
 

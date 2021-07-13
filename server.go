@@ -382,7 +382,7 @@ func (s *Server) serveConn(c net.Conn) error {
 		if err = writeResponse(ctx, bw); err != nil {
 			break
 		}
-		connectionClose = ctx.Request.Header.ConnectionClose || ctx.Response.Header.ConnectionClose
+		connectionClose = ctx.Request.Header.ConnectionClose() || ctx.Response.Header.ConnectionClose()
 
 		if br == nil || connectionClose {
 			err = bw.Flush()
@@ -672,6 +672,12 @@ func (ctx *RequestCtx) initID() {
 func (ctx *RequestCtx) Success(contentType string, body []byte) {
 	ctx.Response.Header.SetBytesK(strContentType, contentType)
 	ctx.SetResponseBody(body)
+}
+
+// SetConnectionClose sets 'Connection: close' response header and closes
+// connection after the RequestHandler returns.
+func (ctx *RequestCtx) SetConnectionClose() {
+	ctx.Request.Header.SetConnectionClose()
 }
 
 // SetResponseBody sets response body to the given value.
