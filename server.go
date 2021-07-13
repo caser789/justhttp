@@ -313,19 +313,22 @@ func (s *Server) serveConn(c net.Conn) error {
 	readTimeout := s.ReadTimeout
 	writeTimeout := s.WriteTimeout
 
+	currentTime := time.Now()
+
 	ctx := s.acquireCtx(c)
+	ctx.serveConnRequestNum = 0
+	ctx.serveConnTime = currentTime
 	var br *bufio.Reader
 	var bw *bufio.Writer
 	var dt time.Duration
 	var prevReadTime time.Time
 
 	var err error
-	var currentTime time.Time
 	var connectionClose bool
 	var errMsg string
 	for {
-		currentTime = time.Now()
 		ctx.id++
+		ctx.serveConnRequestNum++
 		ctx.time = currentTime
 
 		if readTimeout > 0 {
@@ -395,6 +398,8 @@ func (s *Server) serveConn(c net.Conn) error {
 				break
 			}
 		}
+
+		currentTime = time.Now()
 	}
 
 	if br != nil {
@@ -533,6 +538,9 @@ type RequestCtx struct {
 
 	id uint64
 
+	serveConnRequestNum uint64
+	serveConnTime       time.Time
+
 	time time.Time
 
 	logger ctxLogger
@@ -655,7 +663,9 @@ func (ctx *RequestCtx) Init(req *Request, remoteAddr net.Addr, logger Logger) {
 	ctx.initID()
 	req.CopyTo(&ctx.Request)
 	ctx.Response.Clear()
-	ctx.time = time.Now()
+	ctx.serveConnRequestNum = 0
+	ctx.serveConnTime = time.Now()
+	ctx.time = ctx.serveConnTime
 }
 
 func (ctx *RequestCtx) initID() {
@@ -665,6 +675,18 @@ func (ctx *RequestCtx) initID() {
 // ID returns unique ID of the request.
 func (ctx *RequestCtx) ID() uint64 {
 	return ctx.id
+}
+
+// ServeConnTime returns the time server starts serving the connection
+// the current request came from.
+func (ctx *RequestCtx) ServeConnTime() time.Time {
+	return ctx.serveConnTime
+}
+
+// ServeConnRequestNum returns request sequence number
+// for the current connection.
+func (ctx *RequestCtx) ServeConnRequestNum() uint64 {
+	return ctx.serveConnRequestNum
 }
 
 // Referer returns request referer.
