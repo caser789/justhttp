@@ -37,6 +37,7 @@ type ErrNoReusePort struct {
 	err error
 }
 
+// Error implements error interface.
 func (e *ErrNoReusePort) Error() string {
 	return fmt.Sprintf("The OS doesn't support SO_REUSEPORT: %s", e.err)
 }
@@ -61,10 +62,10 @@ func Listener(network, addr string) (l net.Listener, err error) {
 		return nil, err
 	}
 
-    if err = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1); err != nil {
-        syscall.Close(fd)
-        return nil, err
-    }
+	if err = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, syscall.SO_REUSEADDR, 1); err != nil {
+		syscall.Close(fd)
+		return nil, err
+	}
 
 	if err = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, reusePort, 1); err != nil {
 		syscall.Close(fd)
