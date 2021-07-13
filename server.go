@@ -568,6 +568,12 @@ var zeroTCPAddr = &net.TCPAddr{
 	IP: net.IPv4zero,
 }
 
+// Write writes p into response body.
+func (ctx *RequestCtx) Write(p []byte) (int, error) {
+	ctx.Response.body = append(ctx.Response.body, p...)
+	return len(p), nil
+}
+
 // RequestURI returns RequestURI.
 //
 // This uri is valid until returning from RequestHandler.
