@@ -729,7 +729,7 @@ func (ctx *RequestCtx) SetContentTypeBytes(contentType []byte) {
 // Success calls are ignored after TimeoutError call.
 func (ctx *RequestCtx) Success(contentType string, body []byte) {
 	ctx.SetContentType(contentType)
-	ctx.SetResponseBody(body)
+	ctx.SetBody(body)
 }
 
 // SetConnectionClose sets 'Connection: close' response header and closes
@@ -738,10 +738,10 @@ func (ctx *RequestCtx) SetConnectionClose() {
 	ctx.Request.Header.SetConnectionClose()
 }
 
-// SetResponseBody sets response body to the given value.
+// SetBody sets response body to the given value.
 //
 // It is safe modifying body buffer after the function return.
-func (ctx *RequestCtx) SetResponseBody(body []byte) {
+func (ctx *RequestCtx) SetBody(body []byte) {
 	ctx.Response.Body = append(ctx.Response.Body[:0], body...)
 }
 
