@@ -433,6 +433,23 @@ func (h *ResponseHeader) parseHeaders(buf []byte) (int, error) {
 	return len(buf) - len(s.b), nil
 }
 
+// Referer returns Referer header value.
+func (h *RequestHeader) Referer() []byte {
+	return h.PeekBytes(strReferer)
+}
+
+// SetReferer sets Referer header value.
+func (h *RequestHeader) SetReferer(referer string) {
+	h.SetBytesK(strReferer, referer)
+}
+
+// SetRefererBytes sets Referer header value.
+//
+// It is safe modifying referer buffer after function return.
+func (h *RequestHeader) SetRefererBytes(referer []byte) {
+	h.SetCanonical(strReferer, referer)
+}
+
 // ConnectionClose returns true if 'Connection: close' header is set.
 func (h *RequestHeader) ConnectionClose() bool {
 	// h.parseRawHeaders() isn't called for performance reasons.
