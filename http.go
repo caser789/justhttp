@@ -25,6 +25,22 @@ type Request struct {
 	parsedPostArgs bool
 }
 
+// BodyWriter returns writer for populating request body.
+func (req *Request) BodyWriter() io.Writer {
+	return requestBodyWriter{
+		Request: req,
+	}
+}
+
+type requestBodyWriter struct {
+	*Request
+}
+
+func (w requestBodyWriter) Write(p []byte) (int, error) {
+	w.Request.body = append(w.Request.body, p...)
+	return len(p), nil
+}
+
 // Body returns request body.
 func (req *Request) Body() []byte {
 	return req.body
@@ -285,6 +301,22 @@ type Response struct {
 	// if set to true, Response.Read() skips reading body.
 	// Use it for HEAD requests
 	SkipBody bool
+}
+
+// BodyWriter returns writer for populating response body.
+func (resp *Response) BodyWriter() io.Writer {
+	return responseBodyWriter{
+		Response: resp,
+	}
+}
+
+type responseBodyWriter struct {
+	*Response
+}
+
+func (w responseBodyWriter) Write(p []byte) (int, error) {
+	w.Response.body = append(w.body, p...)
+	return len(p), nil
 }
 
 // Body returns response body.
