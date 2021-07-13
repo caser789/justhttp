@@ -650,7 +650,7 @@ func (ctx *RequestCtx) Error(msg string, statusCode int) {
 	resp.Clear()
 	resp.Header.StatusCode = statusCode
 	resp.Header.SetContentTypeBytes(defaultContentType)
-	resp.Body = AppendBytesStr(resp.Body[:0], msg)
+	resp.body = AppendBytesStr(resp.body[:0], msg)
 }
 
 // Init prepares ctx for passing to RequestHandler.
@@ -684,6 +684,13 @@ func (ctx *RequestCtx) initID() {
 // ID returns unique ID of the request.
 func (ctx *RequestCtx) ID() uint64 {
 	return ctx.id
+}
+
+// PostBody returns POST request body.
+//
+// The returned value is valid until RequestHandler return.
+func (ctx *RequestCtx) PostBody() []byte {
+	return ctx.Request.Body()
 }
 
 // ServeConnTime returns the time server starts serving the connection

@@ -24,7 +24,7 @@ func TestRequestCtxInit(t *testing.T) {
 
 	expectedLog := "0.000 #0012345700000000 - 0.0.0.0:0<->0.0.0.0:0 - GET http:/// - foo bar 10\n"
 	if logger.out != expectedLog {
-		t.Fatalf("unexpected log output: %q. Expected %q", logger.out, expectedLog)
+		t.Fatalf("Unexpected log output: %q. Expected %q", logger.out, expectedLog)
 	}
 }
 
@@ -166,10 +166,55 @@ func TestServerConnectionClose(t *testing.T) {
 	}
 }
 
+func TestServerRequestNumAndTime(t *testing.T) {
+	n := uint64(0)
+	var connT time.Time
+	s := &Server{
+		Handler: func(ctx *RequestCtx) {
+			n++
+			if ctx.ServeConnRequestNum() != n {
+				t.Fatalf("unexpected request number: %d. Expecting %d", ctx.ServeConnRequestNum(), n)
+			}
+			if connT.IsZero() {
+				connT = ctx.ServeConnTime()
+			}
+			if ctx.ServeConnTime() != connT {
+				t.Fatalf("unexpected serve conn time: %s. Expecting %s", ctx.ServeConnTime(), connT)
+			}
+		},
+	}
+
+	rw := &readWriter{}
+	rw.r.WriteString("GET /foo1 HTTP/1.1\r\nHost: google.com\r\n\r\n")
+	rw.r.WriteString("GET /bar HTTP/1.1\r\nHost: google.com\r\n\r\n")
+	rw.r.WriteString("GET /baz HTTP/1.1\r\nHost: google.com\r\n\r\n")
+
+	ch := make(chan error)
+	go func() {
+		ch <- s.ServeConn(rw)
+	}()
+
+	select {
+	case err := <-ch:
+		if err != nil {
+			t.Fatalf("Unexpected error from serveConn: %s", err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatalf("timeout")
+	}
+
+	if n != 3 {
+		t.Fatalf("unexpected number of requests served: %d. Expecting %d", n, 3)
+	}
+
+	br := bufio.NewReader(&rw.w)
+	verifyResponse(t, br, 200, string(defaultContentType), "")
+}
+
 func TestServerEmptyResponse(t *testing.T) {
 	s := &Server{
 		Handler: func(ctx *RequestCtx) {
-			// do nothing;
+			// do nothing :)
 		},
 	}
 
@@ -194,6 +239,14 @@ func TestServerEmptyResponse(t *testing.T) {
 	verifyResponse(t, br, 200, string(defaultContentType), "")
 }
 
+type customLogger struct {
+	out string
+}
+
+func (cl *customLogger) Printf(format string, args ...interface{}) {
+	cl.out += fmt.Sprintf(format, args...) + "\n"
+}
+
 func TestServerLogger(t *testing.T) {
 	cl := &customLogger{}
 	s := &Server{
@@ -202,7 +255,7 @@ func TestServerLogger(t *testing.T) {
 			h := &ctx.Request.Header
 			logger.Printf("begin")
 			ctx.Success("text/html", []byte(fmt.Sprintf("requestURI=%s, body=%q, remoteAddr=%s",
-				h.RequestURI(), ctx.Request.Body, ctx.RemoteAddr())))
+				h.RequestURI(), ctx.Request.Body(), ctx.RemoteAddr())))
 			logger.Printf("end")
 		},
 		Logger: cl,
@@ -287,6 +340,32 @@ func TestServerRemoteAddr(t *testing.T) {
 	verifyResponse(t, br, 200, "text/html", "requestURI=/foo1, remoteAddr=1.2.3.4:8765, remoteIP=1.2.3.4")
 }
 
+type readWriterRemoteAddr struct {
+	net.Conn
+	rw   io.ReadWriteCloser
+	addr net.Addr
+}
+
+func (rw *readWriterRemoteAddr) Close() error {
+	return rw.rw.Close()
+}
+
+func (rw *readWriterRemoteAddr) Read(b []byte) (int, error) {
+	return rw.rw.Read(b)
+}
+
+func (rw *readWriterRemoteAddr) Write(b []byte) (int, error) {
+	return rw.rw.Write(b)
+}
+
+func (rw *readWriterRemoteAddr) RemoteAddr() net.Addr {
+	return rw.addr
+}
+
+func (rw *readWriterRemoteAddr) LocalAddr() net.Addr {
+	return rw.addr
+}
+
 func TestServerConnError(t *testing.T) {
 	s := &Server{
 		Handler: func(ctx *RequestCtx) {
@@ -325,8 +404,8 @@ func TestServerConnError(t *testing.T) {
 	if !bytes.Equal(resp.Header.Peek("Content-Type"), defaultContentType) {
 		t.Fatalf("Unexpected Content-Type %q. Expected %q", resp.Header.Peek("Content-Type"), defaultContentType)
 	}
-	if !bytes.Equal(resp.Body, []byte("foobar")) {
-		t.Fatalf("Unexpected body %q. Expected %q", resp.Body, "foobar")
+	if !bytes.Equal(resp.Body(), []byte("foobar")) {
+		t.Fatalf("Unexpected body %q. Expected %q", resp.Body(), "foobar")
 	}
 }
 
@@ -389,12 +468,16 @@ func TestServeConnMultiRequests(t *testing.T) {
 	verifyResponse(t, br, 200, "aaa", "requestURI=/abc, host=foobar.com")
 }
 
-type customLogger struct {
-	out string
-}
+func verifyResponse(t *testing.T, r *bufio.Reader, expectedStatusCode int, expectedContentType, expectedBody string) {
+	var resp Response
+	if err := resp.Read(r); err != nil {
+		t.Fatalf("Unexpected error when parsing response: %s", err)
+	}
 
-func (cl *customLogger) Printf(format string, args ...interface{}) {
-	cl.out += fmt.Sprintf(format, args...) + "\n"
+	if !bytes.Equal(resp.Body(), []byte(expectedBody)) {
+		t.Fatalf("Unexpected body %q. Expected %q", resp.Body(), []byte(expectedBody))
+	}
+	verifyResponseHeader(t, &resp.Header, expectedStatusCode, len(resp.Body()), expectedContentType)
 }
 
 type readWriter struct {
@@ -403,8 +486,8 @@ type readWriter struct {
 	w bytes.Buffer
 }
 
-func (rw *readWriter) LocalAddr() net.Addr {
-	return zeroTCPAddr
+func (rw *readWriter) Close() error {
+	return nil
 }
 
 func (rw *readWriter) Read(b []byte) (int, error) {
@@ -415,93 +498,10 @@ func (rw *readWriter) Write(b []byte) (int, error) {
 	return rw.w.Write(b)
 }
 
-func (rw *readWriter) Close() error {
-	return nil
-}
-
 func (rw *readWriter) RemoteAddr() net.Addr {
 	return zeroTCPAddr
 }
 
-func verifyResponse(t *testing.T, r *bufio.Reader, expectedStatusCode int, expectedContentType, expectedBody string) {
-	var resp Response
-	if err := resp.Read(r); err != nil {
-		t.Fatalf("Unexpected error when parsing response: %s", err)
-	}
-
-	if !bytes.Equal(resp.Body, []byte(expectedBody)) {
-		t.Fatalf("Unexpected body %q. Expected %q", resp.Body, []byte(expectedBody))
-	}
-	verifyResponseHeader(t, &resp.Header, expectedStatusCode, len(resp.Body), expectedContentType)
-}
-
-type readWriterRemoteAddr struct {
-	net.Conn
-	rw   io.ReadWriteCloser
-	addr net.Addr
-}
-
-func (rw *readWriterRemoteAddr) LocalAddr() net.Addr {
-	return rw.addr
-}
-
-func (rw *readWriterRemoteAddr) Read(b []byte) (int, error) {
-	return rw.rw.Read(b)
-}
-
-func (rw *readWriterRemoteAddr) Write(b []byte) (int, error) {
-	return rw.rw.Write(b)
-}
-
-func (rw *readWriterRemoteAddr) RemoteAddr() net.Addr {
-	return rw.addr
-}
-
-func (rw *readWriterRemoteAddr) Close() error {
-	return rw.rw.Close()
-}
-
-func TestServerRequestNumAndTime(t *testing.T) {
-	n := uint64(0)
-	var connT time.Time
-	s := &Server{
-		Handler: func(ctx *RequestCtx) {
-			n++
-			if ctx.ServeConnRequestNum() != n {
-				t.Fatalf("unexpected request number: %d. Expecting %d", ctx.ServeConnRequestNum(), n)
-			}
-			if connT.IsZero() {
-				connT = ctx.ServeConnTime()
-			}
-			if ctx.ServeConnTime() != connT {
-				t.Fatalf("unexpected serve conn time: %s. Expecting %s", ctx.ServeConnTime(), connT)
-			}
-		},
-	}
-
-	rw := &readWriter{}
-	rw.r.WriteString("GET /foo1 HTTP/1.1\r\nHost: google.com\r\n\r\n")
-	rw.r.WriteString("GET /bar HTTP/1.1\r\nHost: google.com\r\n\r\n")
-	rw.r.WriteString("GET /baz HTTP/1.1\r\nHost: google.com\r\n\r\n")
-
-	ch := make(chan error)
-	go func() {
-		ch <- s.ServeConn(rw)
-	}()
-
-	select {
-	case err := <-ch:
-		if err != nil {
-			t.Fatalf("Unexpected error from serveConn: %s", err)
-		}
-	case <-time.After(100 * time.Millisecond):
-		t.Fatalf("timeout")
-	}
-
-	if n != 3 {
-		t.Fatalf("unexpected number of requests served: %d. Expecting %d", n, 3)
-	}
-
-	br := bufio.NewReader(&rw.w)
-	verifyResponse(t, br, 200, string(defaultContentType), "")
+func (rw *readWriter) LocalAddr() net.Addr {
+	return zeroTCPAddr
 }

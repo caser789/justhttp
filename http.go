@@ -16,14 +16,25 @@ type Request struct {
 	// Request header
 	Header RequestHeader
 
-	// Request body.
-	Body []byte
+	body []byte
 
 	uri       URI
 	parsedURI bool
 
 	postArgs       Args
 	parsedPostArgs bool
+}
+
+// Body returns request body.
+func (req *Request) Body() []byte {
+	return req.body
+}
+
+// SetBody sets request body.
+//
+// It is safe modifying body buffer after function return.
+func (req *Request) SetBody(body []byte) {
+	req.body = append(req.body[:0], body...)
 }
 
 // SetRequestURI sets RequestURI.
@@ -42,7 +53,7 @@ func (req *Request) SetRequestURIBytes(requestURI []byte) {
 func (req *Request) CopyTo(dst *Request) {
 	dst.Clear()
 	req.Header.CopyTo(&dst.Header)
-	dst.Body = append(dst.Body[:0], req.Body...)
+	dst.body = append(dst.body[:0], req.body...)
 	if req.parsedURI {
 		dst.parseURI()
 	}
@@ -84,7 +95,7 @@ func (req *Request) parsePostArgs() {
 	if !bytes.Equal(req.Header.ContentType(), strPostArgsContentType) {
 		return
 	}
-	req.postArgs.ParseBytes(req.Body)
+	req.postArgs.ParseBytes(req.body)
 	return
 }
 
@@ -95,7 +106,7 @@ func (req *Request) Clear() {
 }
 
 func (req *Request) clearSkipHeader() {
-	req.Body = req.Body[:0]
+	req.body = req.body[:0]
 	req.uri.Clear()
 	req.parsedURI = false
 	req.postArgs.Clear()
@@ -111,12 +122,12 @@ func (req *Request) Read(r *bufio.Reader) error {
 	}
 
 	if req.Header.IsPost() {
-		req.Body, err = readBody(r, req.Header.ContentLength(), req.Body)
+		req.body, err = readBody(r, req.Header.ContentLength(), req.body)
 		if err != nil {
 			req.Clear()
 			return err
 		}
-		req.Header.SetContentLength(len(req.Body))
+		req.Header.SetContentLength(len(req.body))
 	}
 	return nil
 }
@@ -130,15 +141,15 @@ func (req *Request) Write(w *bufio.Writer) error {
 		req.Header.SetHostBytes(uri.Host)
 		req.Header.SetRequestURIBytes(uri.RequestURI())
 	}
-	req.Header.SetContentLength(len(req.Body))
+	req.Header.SetContentLength(len(req.body))
 	err := req.Header.Write(w)
 	if err != nil {
 		return err
 	}
 	if req.Header.IsPost() {
-		_, err = w.Write(req.Body)
-	} else if len(req.Body) > 0 {
-		return fmt.Errorf("Non-zero body of non-POST request. body=%q", req.Body)
+		_, err = w.Write(req.body)
+	} else if len(req.body) > 0 {
+		return fmt.Errorf("Non-zero body for non-POST request. body=%q", req.body)
 	}
 	return err
 }
@@ -267,14 +278,18 @@ type Response struct {
 	// Response header
 	Header ResponseHeader
 
-	// Response body.
-	Body []byte
+	body []byte
 
 	bodyStream io.Reader
 
 	// if set to true, Response.Read() skips reading body.
 	// Use it for HEAD requests
 	SkipBody bool
+}
+
+// Body returns response body.
+func (resp *Response) Body() []byte {
+	return resp.body
 }
 
 // SetBodyStream sets response body stream and, optionally body size.
@@ -295,7 +310,7 @@ func (resp *Response) SetBodyStream(bodyStream io.Reader, bodySize int) {
 //
 // It is safe modifying body buffer after function return.
 func (resp *Response) SetBody(body []byte) {
-	resp.Body = append(resp.Body[:0], body...)
+	resp.body = append(resp.body[:0], body...)
 }
 
 // StatusCode returns response status code.
@@ -312,7 +327,7 @@ func (resp *Response) SetStatusCode(statusCode int) {
 func (resp *Response) CopyTo(dst *Response) {
 	dst.Clear()
 	resp.Header.CopyTo(&dst.Header)
-	dst.Body = append(dst.Body[:0], resp.Body...)
+	dst.body = append(dst.body[:0], resp.body...)
 	dst.SkipBody = resp.SkipBody
 }
 
@@ -323,7 +338,7 @@ func (resp *Response) Clear() {
 }
 
 func (resp *Response) clearSkipHeader() {
-	resp.Body = resp.Body[:0]
+	resp.body = resp.body[:0]
 	resp.bodyStream = nil
 }
 
@@ -336,12 +351,12 @@ func (resp *Response) Read(r *bufio.Reader) error {
 	}
 
 	if !isSkipResponseBody(resp.Header.StatusCode) && !resp.SkipBody {
-		resp.Body, err = readBody(r, resp.Header.ContentLength(), resp.Body)
+		resp.body, err = readBody(r, resp.Header.ContentLength(), resp.body)
 		if err != nil {
 			resp.Clear()
 			return err
 		}
-		resp.Header.SetContentLength(len(resp.Body))
+		resp.Header.SetContentLength(len(resp.body))
 	}
 	return nil
 }
@@ -375,11 +390,11 @@ func (resp *Response) Write(w *bufio.Writer) error {
 		return err
 	}
 
-	resp.Header.SetContentLength(len(resp.Body))
+	resp.Header.SetContentLength(len(resp.body))
 	if err = resp.Header.Write(w); err != nil {
 		return err
 	}
-	_, err = w.Write(resp.Body)
+	_, err = w.Write(resp.body)
 	return err
 }
 
