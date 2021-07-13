@@ -402,7 +402,7 @@ func acquireRequest() *Request {
 }
 
 func releaseRequest(req *Request) {
-	req.Clear()
+	req.Reset()
 	requestPool.Put(req)
 }
 
@@ -415,7 +415,7 @@ func acquireResponse() *Response {
 }
 
 func releaseResponse(resp *Response) {
-	resp.Clear()
+	resp.Reset()
 	responsePool.Put(resp)
 }
 

@@ -67,7 +67,7 @@ func (req *Request) SetRequestURIBytes(requestURI []byte) {
 
 // CopyTo copies req contents to dst
 func (req *Request) CopyTo(dst *Request) {
-	dst.Clear()
+	dst.Reset()
 	req.Header.CopyTo(&dst.Header)
 	dst.body = append(dst.body[:0], req.body...)
 	if req.parsedURI {
@@ -115,17 +115,17 @@ func (req *Request) parsePostArgs() {
 	return
 }
 
-// Clear clears request contents.
-func (req *Request) Clear() {
-	req.Header.Clear()
+// Reset clears request contents.
+func (req *Request) Reset() {
+	req.Header.Reset()
 	req.clearSkipHeader()
 }
 
 func (req *Request) clearSkipHeader() {
 	req.body = req.body[:0]
-	req.uri.Clear()
+	req.uri.Reset()
 	req.parsedURI = false
-	req.postArgs.Clear()
+	req.postArgs.Reset()
 	req.parsedPostArgs = false
 }
 
@@ -140,7 +140,7 @@ func (req *Request) Read(r *bufio.Reader) error {
 	if req.Header.IsPost() {
 		req.body, err = readBody(r, req.Header.ContentLength(), req.body)
 		if err != nil {
-			req.Clear()
+			req.Reset()
 			return err
 		}
 		req.Header.SetContentLength(len(req.body))
@@ -357,15 +357,15 @@ func (resp *Response) SetStatusCode(statusCode int) {
 
 // CopyTo copies resp contents to dst except of BodyStream.
 func (resp *Response) CopyTo(dst *Response) {
-	dst.Clear()
+	dst.Reset()
 	resp.Header.CopyTo(&dst.Header)
 	dst.body = append(dst.body[:0], resp.body...)
 	dst.SkipBody = resp.SkipBody
 }
 
-// Clear clears response contents.
-func (resp *Response) Clear() {
-	resp.Header.Clear()
+// Reset clears response contents.
+func (resp *Response) Reset() {
+	resp.Header.Reset()
 	resp.clearSkipHeader()
 }
 
@@ -385,7 +385,7 @@ func (resp *Response) Read(r *bufio.Reader) error {
 	if !isSkipResponseBody(resp.Header.StatusCode) && !resp.SkipBody {
 		resp.body, err = readBody(r, resp.Header.ContentLength(), resp.body)
 		if err != nil {
-			resp.Clear()
+			resp.Reset()
 			return err
 		}
 		resp.Header.SetContentLength(len(resp.body))
