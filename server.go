@@ -316,10 +316,10 @@ func (s *Server) getConcurrency() int {
 
 func (s *Server) serveConn(c net.Conn) error {
 	currentTime := time.Now()
+	connTime := currentTime
+	connRequestNum := uint64(0)
 
 	ctx := s.acquireCtx(c)
-	ctx.connRequestNum = 0
-	ctx.connTime = currentTime
 	var br *bufio.Reader
 	var bw *bufio.Writer
 
@@ -328,7 +328,7 @@ func (s *Server) serveConn(c net.Conn) error {
 	var errMsg string
 	for {
 		ctx.id++
-		ctx.connRequestNum++
+		connRequestNum++
 		ctx.time = currentTime
 
 		if s.ReadTimeout > 0 {
@@ -356,6 +356,8 @@ func (s *Server) serveConn(c net.Conn) error {
 			}
 		}
 
+		ctx.connRequestNum = connRequestNum
+		ctx.connTime = connTime
 		currentTime = time.Now()
 		ctx.lastReadDuration = currentTime.Sub(ctx.time)
 
@@ -374,7 +376,7 @@ func (s *Server) serveConn(c net.Conn) error {
 			ctx = s.acquireCtx(c)
 			ctx.Error(errMsg, StatusRequestTimeout)
 		}
-		if s.MaxRequestsPerConn > 0 && ctx.connRequestNum >= uint64(s.MaxRequestsPerConn) {
+		if s.MaxRequestsPerConn > 0 && connRequestNum >= uint64(s.MaxRequestsPerConn) {
 			ctx.SetConnectionClose()
 		}
 		if s.WriteTimeout > 0 {
@@ -541,11 +543,12 @@ type RequestCtx struct {
 
 	id uint64
 
+	lastReadDuration time.Duration
+
 	connRequestNum uint64
 	connTime       time.Time
 
-	time             time.Time
-	lastReadDuration time.Duration
+	time time.Time
 
 	logger ctxLogger
 	s      *Server
