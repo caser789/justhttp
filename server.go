@@ -224,9 +224,6 @@ func (s *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
 
 // Serve serves incoming connections from the given listener.
 //
-// Serve may handle DefaultConcurrency concurrent connections.
-// Use ServeConcurrency for handling another number of concurrent connections.
-//
 // Serve blocks until the given listener returns permanent error.
 func (s *Server) Serve(ln net.Listener) error {
 	var lastOverflowErrorTime time.Time
@@ -325,8 +322,6 @@ func (s *Server) serveConn(c net.Conn) error {
 	ctx.serveConnTime = currentTime
 	var br *bufio.Reader
 	var bw *bufio.Writer
-	var dt time.Duration
-	var prevReadTime time.Time
 
 	var err error
 	var connectionClose bool
@@ -341,7 +336,7 @@ func (s *Server) serveConn(c net.Conn) error {
 				break
 			}
 		}
-		if dt < time.Second || br != nil {
+		if ctx.lastReadDuration < time.Second || br != nil {
 			if br == nil {
 				br = acquireReader(ctx)
 			}
@@ -360,16 +355,16 @@ func (s *Server) serveConn(c net.Conn) error {
 				}
 			}
 		}
+
+		currentTime = time.Now()
+		ctx.lastReadDuration = currentTime.Sub(ctx.time)
+
 		if err != nil {
 			if err == io.EOF {
 				err = nil
 			}
 			break
 		}
-
-		currentTime = time.Now()
-		dt = currentTime.Sub(prevReadTime)
-		prevReadTime = currentTime
 
 		ctx.time = currentTime
 		ctx.Response.Reset()
@@ -549,7 +544,8 @@ type RequestCtx struct {
 	serveConnRequestNum uint64
 	serveConnTime       time.Time
 
-	time time.Time
+	time             time.Time
+	lastReadDuration time.Duration
 
 	logger ctxLogger
 	s      *Server
