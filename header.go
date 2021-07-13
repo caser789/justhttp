@@ -378,7 +378,6 @@ func (h *ResponseHeader) parseFirstLine(buf []byte) (int, error) {
 }
 
 func (h *ResponseHeader) parseHeaders(buf []byte) (int, error) {
-
 	// 'identity' content-length by default
 	h.contentLength = -2
 
@@ -420,6 +419,7 @@ func (h *ResponseHeader) parseHeaders(buf []byte) (int, error) {
 		}
 	}
 	if s.err != nil {
+		h.connectionClose = true
 		return 0, s.err
 	}
 
@@ -1032,12 +1032,22 @@ func (h *RequestHeader) parse(buf []byte) (int, error) {
 	if err != nil {
 		return 0, err
 	}
-	rawHeaders, n, err := readRawHeaders(h.rawHeaders, buf[m:])
-	if err != nil {
-		return 0, err
-	}
-	h.rawHeaders = rawHeaders
 
+	var n int
+	if h.IsPost() {
+		n, err = h.parseHeaders(buf[m:])
+		if err != nil {
+			return 0, err
+		}
+		h.rawHeadersParsed = true
+	} else {
+		var rawHeaders []byte
+		rawHeaders, n, err = readRawHeaders(h.rawHeaders, buf[m:])
+		if err != nil {
+			return 0, err
+		}
+		h.rawHeaders = rawHeaders
+	}
 	return m + n, nil
 }
 
@@ -1105,19 +1115,11 @@ func readRawHeaders(dst, buf []byte) ([]byte, int, error) {
 	}
 }
 
-func (h *RequestHeader) parseRawHeaders() {
-	if h.rawHeadersParsed {
-		return
-	}
-	h.rawHeadersParsed = true
-	if len(h.rawHeaders) == 0 {
-		return
-	}
-
+func (h *RequestHeader) parseHeaders(buf []byte) (int, error) {
 	h.contentLength = -2
 
 	var s headerScanner
-	s.b = h.rawHeaders
+	s.b = buf
 	var err error
 	var kv *argsKV
 	for s.next() {
@@ -1153,6 +1155,7 @@ func (h *RequestHeader) parseRawHeaders() {
 	}
 	if s.err != nil {
 		h.connectionClose = true
+		return 0, s.err
 	}
 
 	if h.contentLength < 0 {
@@ -1163,6 +1166,18 @@ func (h *RequestHeader) parseRawHeaders() {
 		h.contentLength = 0
 		h.contentLengthBytes = h.contentLengthBytes[:0]
 	}
+	return len(buf) - len(s.b), nil
+}
+
+func (h *RequestHeader) parseRawHeaders() {
+	if h.rawHeadersParsed {
+		return
+	}
+	h.rawHeadersParsed = true
+	if len(h.rawHeaders) == 0 {
+		return
+	}
+	h.parseHeaders(h.rawHeaders)
 }
 
 func (h *RequestHeader) collectCookies() {
