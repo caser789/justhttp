@@ -347,12 +347,12 @@ func (resp *Response) SetBody(body []byte) {
 
 // StatusCode returns response status code.
 func (resp *Response) StatusCode() int {
-	return resp.Header.StatusCode
+	return resp.Header.StatusCode()
 }
 
 // SetStatusCode sets response status code.
 func (resp *Response) SetStatusCode(statusCode int) {
-	resp.Header.StatusCode = statusCode
+	resp.Header.SetStatusCode(statusCode)
 }
 
 // CopyTo copies resp contents to dst except of BodyStream.
@@ -382,7 +382,7 @@ func (resp *Response) Read(r *bufio.Reader) error {
 		return err
 	}
 
-	if !isSkipResponseBody(resp.Header.StatusCode) && !resp.SkipBody {
+	if !isSkipResponseBody(resp.Header.StatusCode()) && !resp.SkipBody {
 		resp.body, err = readBody(r, resp.Header.ContentLength(), resp.body)
 		if err != nil {
 			resp.Reset()

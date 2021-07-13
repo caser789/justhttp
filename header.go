@@ -34,8 +34,7 @@ func refreshServerDate() {
 type ResponseHeader struct {
 	connectionClose bool
 
-	// Response status code.
-	StatusCode int
+	statusCode int
 
 	contentLength      int
 	contentLengthBytes []byte
@@ -47,6 +46,16 @@ type ResponseHeader struct {
 	bufKV argsKV
 
 	cookies []argsKV
+}
+
+// StatusCode returns response status code.
+func (h *ResponseHeader) StatusCode() int {
+	return h.statusCode
+}
+
+// SetStatusCode sets response status code.
+func (h *ResponseHeader) SetStatusCode(statusCode int) {
+	h.statusCode = statusCode
 }
 
 // ConnectionClose returns true if 'Connection: close' header is set.
@@ -184,7 +193,7 @@ func (h *ResponseHeader) DelBytes(key []byte) {
 // CopyTo copies all the headers to dst.
 func (h *ResponseHeader) CopyTo(dst *ResponseHeader) {
 	dst.Reset()
-	dst.StatusCode = h.StatusCode
+	dst.statusCode = h.statusCode
 	dst.connectionClose = h.connectionClose
 	dst.contentLength = h.contentLength
 	dst.contentLengthBytes = append(dst.contentLengthBytes[:0], h.contentLengthBytes...)
@@ -223,7 +232,7 @@ func (h *ResponseHeader) VisitAll(f func(key, value []byte)) {
 
 // Reset clears response header.
 func (h *ResponseHeader) Reset() {
-	h.StatusCode = 0
+	h.statusCode = 0
 	h.connectionClose = false
 
 	h.contentLength = 0
@@ -249,7 +258,7 @@ func (h *ResponseHeader) VisitAllCookie(f func(key, value []byte)) {
 
 // Write writs response header to w.
 func (h *ResponseHeader) Write(w *bufio.Writer) error {
-	statusCode := h.StatusCode
+	statusCode := h.StatusCode()
 	if statusCode < 0 {
 		return fmt.Errorf("response cannot have negative status code=%d", statusCode)
 	}
@@ -366,7 +375,7 @@ func (h *ResponseHeader) parseFirstLine(buf []byte) (int, error) {
 	b = b[n+1:]
 
 	// parse status code
-	h.StatusCode, n, err = parseUintBuf(b)
+	h.statusCode, n, err = parseUintBuf(b)
 	if err != nil {
 		return 0, fmt.Errorf("cannot parse response status code: %s. Response %q", err, buf)
 	}

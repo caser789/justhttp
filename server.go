@@ -654,7 +654,7 @@ func (ctx *RequestCtx) RemoteIP() net.IP {
 func (ctx *RequestCtx) Error(msg string, statusCode int) {
 	resp := &ctx.Response
 	resp.Reset()
-	resp.Header.StatusCode = statusCode
+	resp.SetStatusCode(statusCode)
 	resp.Header.SetContentTypeBytes(defaultContentType)
 	resp.body = AppendBytesStr(resp.body[:0], msg)
 }
