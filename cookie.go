@@ -59,8 +59,8 @@ func (c *Cookie) String() string {
 //
 // WriteTo implements io.WriteTo interface.
 func (c *Cookie) WriteTo(w io.Writer) (int64, error) {
-    n, err := w.Write(c.Cookie())
-    return int64(n), err
+	n, err := w.Write(c.Cookie())
+	return int64(n), err
 }
 
 // Reset clears the cookie.

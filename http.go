@@ -3,10 +3,13 @@ package fasthttp
 import (
 	"bufio"
 	"bytes"
+	"errors"
 	"fmt"
 	"io"
 	"sync"
 )
+
+var errRequestHostRequired = errors.New("Missing required Host header in request")
 
 // Request represents HTTP request.
 //
@@ -164,7 +167,11 @@ func (req *Request) Read(r *bufio.Reader) error {
 func (req *Request) Write(w *bufio.Writer) error {
 	if len(req.Header.Host()) == 0 {
 		uri := req.URI()
-		req.Header.SetHostBytes(uri.Host())
+		host := uri.Host()
+		if len(host) == 0 {
+			return errRequestHostRequired
+		}
+		req.Header.SetHostBytes(host)
 		req.Header.SetRequestURIBytes(uri.RequestURI())
 	}
 	req.Header.SetContentLength(len(req.body))
