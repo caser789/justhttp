@@ -667,6 +667,13 @@ func (ctx *RequestCtx) ID() uint64 {
 	return ctx.id
 }
 
+// Referer returns request referer.
+//
+// The referer is valid until returning from RequestHandler.
+func (ctx *RequestCtx) Referer() []byte {
+	return ctx.Request.Header.PeekBytes(strReferer)
+}
+
 // SetStatusCode sets response status code.
 func (ctx *RequestCtx) SetStatusCode(statusCode int) {
 	ctx.Response.Header.StatusCode = statusCode
