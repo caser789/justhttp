@@ -571,7 +571,7 @@ func (ctx *RequestCtx) RequestURI() []byte {
 //
 // The path is valid until returning from RequestHandler
 func (ctx *RequestCtx) Path() []byte {
-	return ctx.URI().Path
+	return ctx.URI().Path()
 }
 
 // Host returns requested host.
