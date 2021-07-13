@@ -114,7 +114,7 @@ func (a *Args) HasBytes(key []byte) bool {
 
 // WriteTo writes query string to w.
 //
-// WriteTo implements io.WriterTo
+// WriteTo implements io.WriterTo interface.
 func (a *Args) WriteTo(w io.Writer) (int64, error) {
 	n, err := w.Write(a.QueryString())
 	return int64(n), err
