@@ -14,3 +14,4 @@ https://godoc.org/github.com/caser789/justhttp
 - [ ] Example tests.
 - [ ] Load balancing client for multiple upstream hosts.
 - [ ] Client with requests' pipelining support.
+- [x] Reuse-port listner
