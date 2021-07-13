@@ -54,7 +54,15 @@ type ResponseHeader struct {
 
 // ConnectionClose returns true if 'Connection: close' header is set.
 func (h *ResponseHeader) ConnectionClose() bool {
-	h.parseRawHeaders()
+	if !h.rawHeadersParsed {
+		if h.ContentLength() == -2 {
+			return true
+		}
+		if bytes.Equal(peekRawHeader(h.rawHeaders, strConnection), strClose) {
+			return true
+		}
+		// h.parseRawHeaders() isn't called for performance reasons.
+	}
 	return h.connectionClose
 }
 
@@ -70,7 +78,28 @@ func (h *ResponseHeader) SetConnectionClose() {
 // -1 means Transfer-Encoding: chunked.
 // -2 means Transfer-Encoding: identity.
 func (h *ResponseHeader) ContentLength() int {
-	h.parseRawHeaders()
+	if !h.rawHeadersParsed {
+		if h.contentLength < 0 || len(h.contentLengthBytes) > 0 {
+			return h.contentLength
+		}
+		value := peekRawHeader(h.rawHeaders, strTransferEncoding)
+		if len(value) > 0 {
+			if bytes.Equal(value, strIdentity) {
+				h.connectionClose = true
+				h.contentLength = -2
+				return h.contentLength
+			}
+			h.contentLength = -1
+			return h.contentLength
+		}
+		value = peekRawHeader(h.rawHeaders, strContentLength)
+		if contentLength, err := parseContentLength(value); err == nil {
+			h.contentLength = contentLength
+			h.contentLengthBytes = append(h.contentLengthBytes[:0], value...)
+			return contentLength
+		}
+		h.parseRawHeaders()
+	}
 	return h.contentLength
 }
 
@@ -463,7 +492,12 @@ func (h *ResponseHeader) parseRawHeaders() {
 
 // ConnectionClose returns true if 'Connection: close' header is set.
 func (h *RequestHeader) ConnectionClose() bool {
-	h.parseRawHeaders()
+	if !h.rawHeadersParsed {
+		if bytes.Equal(peekRawHeader(h.rawHeaders, strConnection), strClose) {
+			return true
+		}
+		// h.parseRawHeaders() isn't called for performance reasons.
+	}
 	return h.connectionClose
 }
 
@@ -478,7 +512,26 @@ func (h *RequestHeader) SetConnectionClose() {
 // It may be negative:
 // -1 means Transfer-Encoding: chunked.
 func (h *RequestHeader) ContentLength() int {
-	h.parseRawHeaders()
+	if h.IsGet() || h.IsHead() {
+		return 0
+	}
+	if !h.rawHeadersParsed {
+		if h.contentLength < 0 || len(h.contentLengthBytes) > 0 {
+			return h.contentLength
+		}
+		value := peekRawHeader(h.rawHeaders, strTransferEncoding)
+		if len(value) > 0 {
+			h.contentLength = -1
+			return h.contentLength
+		}
+		value = peekRawHeader(h.rawHeaders, strContentLength)
+		if contentLength, err := parseContentLength(value); err == nil {
+			h.contentLength = contentLength
+			h.contentLengthBytes = append(h.contentLengthBytes[:0], value...)
+			return contentLength
+		}
+		h.parseRawHeaders()
+	}
 	return h.contentLength
 }
 
@@ -1373,3 +1426,36 @@ func getHeaderKeyBytes(kv *argsKV, key string) []byte {
 }
 
 var errNeedMore = errors.New("need more data: cannot find trailing lf")
+
+func peekRawHeader(buf, key []byte) []byte {
+	n := bytes.Index(buf, key)
+	if n < 0 {
+		return nil
+	}
+	if n > 0 && buf[n-1] != '\n' {
+		return nil
+	}
+	buf = buf[n+len(key):]
+	if len(buf) == 0 {
+		return nil
+	}
+	if buf[0] != ':' {
+		return nil
+	}
+	n = 1
+	for len(buf) > n && buf[n] == ' ' {
+		n++
+	}
+	buf = buf[n:]
+	n = bytes.IndexByte(buf, '\n')
+	if n < 0 {
+		return nil
+	}
+	if n > 0 && buf[n-1] == '\r' {
+		n--
+	}
+	if n > 0 && buf[n-1] == ' ' {
+		n--
+	}
+	return buf[:n]
+}
