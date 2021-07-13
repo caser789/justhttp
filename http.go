@@ -298,9 +298,14 @@ func (resp *Response) SetBody(body []byte) {
 	resp.Body = append(resp.Body[:0], body...)
 }
 
-// StatusCode returns response's status code.
+// StatusCode returns response status code.
 func (resp *Response) StatusCode() int {
 	return resp.Header.StatusCode
+}
+
+// SetStatusCode sets response status code.
+func (resp *Response) SetStatusCode(statusCode int) {
+	resp.Header.StatusCode = statusCode
 }
 
 // CopyTo copies resp contents to dst except of BodyStream.
