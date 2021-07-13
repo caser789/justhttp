@@ -101,6 +101,11 @@ func (x *URI) FullURI() []byte {
 	return x.fullURI
 }
 
+// String returns full uri.
+func (x *URI) String() string {
+	return string(x.FullURI())
+}
+
 // RequestURI returns RequestURI - i.e. URI without Scheme and Host.
 func (x *URI) RequestURI() []byte {
 	path := x.Path

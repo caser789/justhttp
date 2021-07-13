@@ -148,8 +148,7 @@ func (h *ResponseHeader) Len() int {
 //
 // It is safe modifying cookie instance after the call.
 func (h *ResponseHeader) SetCookie(cookie *Cookie) {
-	h.bufKV.value = cookie.AppendBytes(h.bufKV.value[:0])
-	h.cookies = setArg(h.cookies, cookie.Key, h.bufKV.value)
+	h.cookies = setArg(h.cookies, cookie.Key, cookie.Cookie())
 }
 
 // SetBytesK sets the given 'key: value' header.
