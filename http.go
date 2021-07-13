@@ -295,6 +295,11 @@ type Response struct {
 	SkipBody bool
 }
 
+// StatusCode returns response's status code.
+func (resp *Response) StatusCode() int {
+	return resp.Header.StatusCode
+}
+
 // CopyTo copies resp contents to dst except of BodyStream.
 func (resp *Response) CopyTo(dst *Response) {
 	dst.Clear()
