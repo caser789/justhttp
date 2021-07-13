@@ -60,8 +60,6 @@ func (req *Request) Body() []byte {
 }
 
 // SetBody sets request body.
-//
-// It is safe modifying body buffer after function return.
 func (req *Request) SetBody(body []byte) {
 	req.body = append(req.body[:0], body...)
 }
@@ -72,8 +70,6 @@ func (req *Request) SetRequestURI(requestURI string) {
 }
 
 // SetRequestURIBytes sets RequestURI.
-//
-// It is safe using requestURI buffer after the function return.
 func (req *Request) SetRequestURIBytes(requestURI []byte) {
 	req.Header.SetRequestURIBytes(requestURI)
 }
@@ -366,8 +362,6 @@ func (resp *Response) SetBodyStream(bodyStream io.Reader, bodySize int) {
 }
 
 // SetBody sets response body.
-//
-// It is safe modifying body buffer after function return.
 func (resp *Response) SetBody(body []byte) {
 	resp.body = append(resp.body[:0], body...)
 }
