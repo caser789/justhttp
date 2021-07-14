@@ -910,6 +910,11 @@ func (ctx *RequestCtx) MultipartForm() (*multipart.Form, error) {
 	return ctx.Request.MultipartForm()
 }
 
+// IsPut returns true if request method is PUT.
+func (ctx *RequestCtx) IsPut() bool {
+	return ctx.Request.Header.IsPut()
+}
+
 // IsGet returns true if request method is GET.
 func (ctx *RequestCtx) IsGet() bool {
 	return ctx.Request.Header.IsGet()
