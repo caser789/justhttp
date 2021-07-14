@@ -210,6 +210,7 @@ type Server struct {
 	readerPool     sync.Pool
 	writerPool     sync.Pool
 	hijackConnPool sync.Pool
+	bytePool       sync.Pool
 }
 
 // Default maximum number of concurrent connections the Server may serve.
@@ -975,8 +976,6 @@ const (
 	defaultWriteBufferSize = 4096
 )
 
-var bytePool sync.Pool
-
 func acquireByteReader(ctxP **RequestCtx) (*bufio.Reader, error) {
 	ctx := *ctxP
 	s := ctx.s
@@ -989,14 +988,14 @@ func acquireByteReader(ctxP **RequestCtx) (*bufio.Reader, error) {
 	ctx = nil
 	*ctxP = nil
 
-	v := bytePool.Get()
+	v := s.bytePool.Get()
 	if v == nil {
 		v = make([]byte, 1)
 	}
 	b := v.([]byte)
 	n, err := c.Read(b)
 	ch := b[0]
-	bytePool.Put(v)
+	s.bytePool.Put(v)
 	ctx = s.acquireCtx(c)
 	ctx.time = t
 	*ctxP = ctx
