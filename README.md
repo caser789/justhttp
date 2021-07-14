@@ -37,3 +37,6 @@ https://godoc.org/github.com/caser789/justhttp
   in production.
   `go tool pprof --alloc_objects your-program mem.pprof` usually gives better
   insights for optimization than `go tool pprof your-program cpu.pprof`.
+* Avoid conversion between []byte and string, since this may result in memory
+  allocation+copy. Fasthttp API provides functions for both []byte and string -
+  use these functions instead of converting manually between []byte and string.
