@@ -166,6 +166,16 @@ type Server struct {
 	// By default unlimited number of requests served per connection.
 	MaxRequestsPerConn int
 
+	// Aggressively reduces memory usage at the cost of higher CPU usage
+	// if set to true.
+	//
+	// Try enabling this option only if the server consumes too much memory
+	// serving mostly idel keep-alive keep-alive connections. This may reduce memory
+	// usage by up to 50%.
+	//
+	// Aggressive memory usage reduction is disabled by default.
+	ReduceMemoryUsage bool
+
 	// Logger, which is used by ServerCtx.Logger().
 	//
 	// By default standard logger from log package is used.
@@ -324,7 +334,7 @@ func (s *Server) serveConn(c net.Conn) error {
 				break
 			}
 		}
-		if ctx.lastReadDuration < time.Second || br != nil {
+		if !(s.ReduceMemoryUsage || ctx.lastReadDuration > time.Second) || br != nil {
 			if br == nil {
 				br = acquireReader(ctx)
 			}

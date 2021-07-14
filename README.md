@@ -15,3 +15,4 @@ https://godoc.org/github.com/caser789/justhttp
 - [ ] Load balancing client for multiple upstream hosts.
 - [ ] Client with requests' pipelining support.
 - [x] Reuse-port listner
+- [x] Trade memory usage with CPU usage for too much keep-alive connections.
