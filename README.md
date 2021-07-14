@@ -16,3 +16,10 @@ https://godoc.org/github.com/caser789/justhttp
 - [ ] Client with requests' pipelining support.
 - [x] Reuse-port listner
 - [x] Trade memory usage with CPU usage for too much keep-alive connections.
+
+# Performance optimization tips for multi-core systems.
+
+* Use [reuseport](https://godoc.org/github.com/valyala/fasthttp/reuseport) listener.
+* Run a separate server instance per CPU core with GOMAXPROCS=1.
+* Attach each server instance to a separate CPU core using [taskset](http://linux.die.net/man/1/taskset).
+* Ensure the interrupts of multiqueue network card are evenly distributed between CPU cores. See [this article](https://blog.cloudflare.com/how-to-achieve-low-latency/) for details.
