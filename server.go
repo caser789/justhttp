@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime/multipart"
 	"net"
 	"os"
 	"runtime/debug"
@@ -886,6 +887,17 @@ func (ctx *RequestCtx) TimeoutErrMsg() string {
 // references to ctx and/or its members in other goroutines.
 func (ctx *RequestCtx) TimeoutError(msg string) {
 	ctx.timeoutErrMsg = msg
+}
+
+// MultipartForm returns requests' multipart form.
+//
+// Returns ErrNoMultipartForm is request's content-type
+// isn't 'multiprt/form-data'.
+//
+// The caller must call RemoveAll on the returned form in order to remove
+// all temporary files associated with the returned form.
+func (ctx *RequestCtx) MultipartForm() (*multipart.Form, error) {
+	return ctx.Request.MultipartForm()
 }
 
 // IsGet returns true if request method is GET.

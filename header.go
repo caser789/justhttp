@@ -459,6 +459,45 @@ func (h *ResponseHeader) parseHeaders(buf []byte) (int, error) {
 	return len(buf) - len(s.b), nil
 }
 
+// MultipartFormBoundary returns boundary part
+// from 'multipart/form-data; boundary=...'
+func (h *RequestHeader) MultipartFormBoundary() []byte {
+	b := h.ContentType()
+	if !bytes.HasPrefix(b, strMultipartFormData) {
+		return nil
+	}
+	b = b[len(strMultipartFormData):]
+	if len(b) == 0 || b[0] != ';' {
+		return nil
+	}
+
+	var n int
+	for len(b) > 0 {
+		n++
+		for len(b) > n && b[n] == ' ' {
+			n++
+		}
+		b = b[n:]
+		if !bytes.HasPrefix(b, strBoundary) {
+			if n = bytes.IndexByte(b, ';'); n < 0 {
+				return nil
+			}
+			continue
+		}
+
+		b = b[len(strBoundary):]
+		if len(b) == 0 || b[0] != '=' {
+			return nil
+		}
+		b = b[1:]
+		if n = bytes.IndexByte(b, ';'); n >= 0 {
+			b = b[:n]
+		}
+		return b
+	}
+	return nil
+}
+
 // Referer returns Referer header value.
 func (h *RequestHeader) Referer() []byte {
 	return h.PeekBytes(strReferer)
