@@ -206,9 +206,10 @@ type Server struct {
 	perIPConnCounter perIPConnCounter
 	serverName       atomic.Value
 
-	ctxPool    sync.Pool
-	readerPool sync.Pool
-	writerPool sync.Pool
+	ctxPool        sync.Pool
+	readerPool     sync.Pool
+	writerPool     sync.Pool
+	hijackConnPool sync.Pool
 }
 
 // Default maximum number of concurrent connections the Server may serve.
@@ -961,11 +962,11 @@ type ctxLogger struct {
 
 func (cl *ctxLogger) Printf(format string, args ...interface{}) {
 	ctxLoggerLock.Lock()
-	s := fmt.Sprintf(format, args...)
+	msg := fmt.Sprintf(format, args...)
 	ctx := cl.ctx
 	req := &ctx.Request
 	cl.logger.Printf("%.3f #%016X - %s<->%s - %s %s - %s",
-		time.Since(ctx.Time()).Seconds(), ctx.ID(), ctx.LocalAddr(), ctx.RemoteAddr(), req.Header.Method(), ctx.URI().FullURI(), s)
+		time.Since(ctx.Time()).Seconds(), ctx.ID(), ctx.LocalAddr(), ctx.RemoteAddr(), req.Header.Method(), ctx.URI().FullURI(), msg)
 	ctxLoggerLock.Unlock()
 }
 
@@ -1193,7 +1194,7 @@ func getRedirectStatusCode(statusCode int) int {
 }
 
 func hijackConnHandler(r io.Reader, c net.Conn, s *Server, h HijackHandler) {
-	hjc := acquireHijackConn(r, c)
+	hjc := s.acquireHijackConn(r, c)
 
 	defer func() {
 		if r := recover(); r != nil {
@@ -1204,31 +1205,33 @@ func hijackConnHandler(r io.Reader, c net.Conn, s *Server, h HijackHandler) {
 			releaseReader(s, br)
 		}
 		c.Close()
-		releaseHijackConn(hjc)
+		s.releaseHijackConn(hjc)
 	}()
 
 	h(hjc)
 }
 
-func acquireHijackConn(r io.Reader, c net.Conn) *hijackConn {
-	v := hijackConnPool.Get()
+func (s *Server) acquireHijackConn(r io.Reader, c net.Conn) *hijackConn {
+	v := s.hijackConnPool.Get()
 	if v == nil {
-		v = &hijackConn{}
+		hjc := &hijackConn{
+			Conn: c,
+			r:    r,
+		}
+		hjc.v = hjc
+		return hjc
 	}
 	hjc := v.(*hijackConn)
 	hjc.Conn = c
 	hjc.r = r
-	hjc.v = v
 	return hjc
 }
 
-func releaseHijackConn(hjc *hijackConn) {
+func (s *Server) releaseHijackConn(hjc *hijackConn) {
 	hjc.Conn = nil
 	hjc.r = nil
-	hijackConnPool.Put(hjc.v)
+	s.hijackConnPool.Put(hjc.v)
 }
-
-var hijackConnPool sync.Pool
 
 type hijackConn struct {
 	net.Conn
