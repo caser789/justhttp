@@ -28,13 +28,13 @@ type Request struct {
 
 	postArgs       Args
 	parsedPostArgs bool
+
+	multipartForm *multipart.Form
 }
 
 // ErrNoMultipartForm means that the request's Content-Type
 // isn't 'multipart/form-data'
 var ErrNoMultipartForm = errors.New("request has no multipart/form-data Content-Type")
-
-const maxInmemoryFileSize = 16 * 1024 * 1024
 
 // MultipartForm returns requests' multipart form.
 //
@@ -44,19 +44,35 @@ const maxInmemoryFileSize = 16 * 1024 * 1024
 // The caller must call RemoveAll on the returned form in order to remove
 // all temporary files associated with the returned form.
 func (req *Request) MultipartForm() (*multipart.Form, error) {
+	if req.multipartForm != nil {
+		return req.multipartForm, nil
+	}
+
+	boundary := req.Header.MultipartFormBoundary()
+	if len(boundary) == 0 {
+		return nil, ErrNoMultipartForm
+	}
+	f, err := readMultipartFormBody(bytes.NewReader(req.body), boundary, 0, len(req.body))
+	if err != nil {
+		return nil, err
+	}
+	req.multipartForm = f
+	return f, nil
+}
+
+func readMultipartFormBody(r io.Reader, boundary []byte, maxBodySize, maxInMemoryFileSize int) (*multipart.Form, error) {
 	// Do not care about memory allocations here, since they are tiny
 	// compared to multipart data (aka multi-MB files) usually sent
 	// in multipart/form-data requests.
 
-	b := req.Header.MultipartFormBoundary()
-	if len(b) == 0 {
-		return nil, ErrNoMultipartForm
+	if maxBodySize > 0 {
+		r = io.LimitReader(r, int64(maxBodySize))
 	}
 
-	r := multipart.NewReader(bytes.NewBuffer(req.body), string(b))
-	f, err := r.ReadForm(maxInmemoryFileSize)
+	mr := multipart.NewReader(r, string(boundary))
+	f, err := mr.ReadForm(int64(maxInMemoryFileSize))
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("cannot read multipart/form-data body: %s", err)
 	}
 	return f, nil
 }
@@ -124,6 +140,8 @@ func (req *Request) CopyTo(dst *Request) {
 	if req.parsedPostArgs {
 		dst.parsePostArgs()
 	}
+	// do not copy multipartForm - it will be automatically
+	// re-created on the first call to MultipartForm.
 }
 
 // URI returns request URI
@@ -175,12 +193,15 @@ func (req *Request) clearSkipHeader() {
 	req.parsedURI = false
 	req.postArgs.Reset()
 	req.parsedPostArgs = false
+	req.multipartForm = nil
 }
 
 // Read reads request (including body) from the given r.
 func (req *Request) Read(r *bufio.Reader) error {
 	return req.ReadLimitBody(r, 0)
 }
+
+const defaultMaxInMemoryFileSize = 16 * 1024 * 1024
 
 // ReadLimitBody reads request from the given r, limiting the body size.
 //
@@ -194,6 +215,21 @@ func (req *Request) ReadLimitBody(r *bufio.Reader, maxBodySize int) error {
 	}
 
 	if req.Header.IsPost() {
+		contentLength := req.Header.ContentLength()
+		if contentLength > 0 {
+			// Pre-read multipart form data of known length.
+			// This way we limit memory usage for large file uploads, since their contents
+			// is streamed into temporary files if file size exceeds defaultMaxInMemoryFileSize.
+			boundary := req.Header.MultipartFormBoundary()
+			if len(boundary) > 0 {
+				req.multipartForm, err = readMultipartFormBody(r, boundary, maxBodySize, defaultMaxInMemoryFileSize)
+				if err != nil {
+					req.Reset()
+				}
+				return err
+			}
+		}
+
 		req.body, err = readBody(r, req.Header.ContentLength(), maxBodySize, req.body)
 		if err != nil {
 			req.Reset()
