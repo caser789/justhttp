@@ -16,6 +16,7 @@ https://godoc.org/github.com/caser789/justhttp
 - [ ] Client with requests' pipelining support.
 - [x] Reuse-port listner
 - [x] Trade memory usage with CPU usage for too much keep-alive connections.
+- [x] hijack request
 
 # Performance optimization tips for multi-core systems.
 
