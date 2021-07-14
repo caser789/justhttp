@@ -40,9 +40,6 @@ var ErrNoMultipartForm = errors.New("request has no multipart/form-data Content-
 //
 // Returns ErrNoMultipartForm if requests content-type
 // isn't 'multipart/form-data'
-//
-// The caller must call RemoveAll on the returned form in order to remove
-// all temporary files associated with the returned form.
 func (req *Request) MultipartForm() (*multipart.Form, error) {
 	if req.multipartForm != nil {
 		return req.multipartForm, nil
@@ -193,10 +190,25 @@ func (req *Request) clearSkipHeader() {
 	req.parsedURI = false
 	req.postArgs.Reset()
 	req.parsedPostArgs = false
-	req.multipartForm = nil
+	req.RemoveMultipartFormFiles()
+}
+
+// RemoveMultipartFormFiles removes multipart/form-data temporary files
+// associated with the request.
+func (req *Request) RemoveMultipartFormFiles() {
+	if req.multipartForm != nil {
+		// Do not check for error, since these files may be deleted or moved
+		// to new places by user code.
+		req.multipartForm.RemoveAll()
+		req.multipartForm = nil
+	}
 }
 
 // Read reads request (including body) from the given r.
+//
+// RemoveMultipartFormFiles or Reset must be called after
+// reading multipart/form-data request in order to delete temporarily
+// uploaded files.
 func (req *Request) Read(r *bufio.Reader) error {
 	return req.ReadLimitBody(r, 0)
 }
@@ -207,6 +219,10 @@ const defaultMaxInMemoryFileSize = 16 * 1024 * 1024
 //
 // If maxBodySize > 0 and the body size exceeds maxBodySize,
 // then ErrBodyTooLarge is returned.
+//
+// RemoveMultipartFormFiles or Reset must be called after
+// reading multipart/form-data request in order to delete temporarily
+// uploaded files.
 func (req *Request) ReadLimitBody(r *bufio.Reader, maxBodySize int) error {
 	req.clearSkipHeader()
 	err := req.Header.Read(r)
