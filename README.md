@@ -17,6 +17,7 @@ https://godoc.org/github.com/caser789/justhttp
 - [x] Reuse-port listner
 - [x] Trade memory usage with CPU usage for too much keep-alive connections.
 - [x] hijack request
+- [ ] Connection: Upgrade
 
 # Performance optimization tips for multi-core systems.
 
