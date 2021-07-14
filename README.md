@@ -23,3 +23,16 @@ https://godoc.org/github.com/caser789/justhttp
 * Run a separate server instance per CPU core with GOMAXPROCS=1.
 * Attach each server instance to a separate CPU core using [taskset](http://linux.die.net/man/1/taskset).
 * Ensure the interrupts of multiqueue network card are evenly distributed between CPU cores. See [this article](https://blog.cloudflare.com/how-to-achieve-low-latency/) for details.
+
+# Fasthttp best practicies
+
+* Do not allocate objects and buffers - just reuse them as much as possible.
+  Fasthttp API design encourages this.
+* [sync.Pool](https://golang.org/pkg/sync/#Pool) is your best friend.
+* Either do not keep references to RequestCtx members after returning
+  from RequestHandler or call RequestCtx.TimeoutError() before returning
+  from RequestHandler.
+* [Profile your program](http://blog.golang.org/profiling-go-programs)
+  in production.
+  `go tool pprof --alloc_objects your-program mem.pprof` usually gives better
+  insights for optimization than `go tool pprof your-program cpu.pprof`.
