@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"math"
-	"reflect"
 	"sync"
 	"time"
 	"unsafe"
@@ -194,19 +193,6 @@ func unsafeBytesToStr(b []byte) string {
 	return *(*string)(unsafe.Pointer(&b))
 }
 
-// unsafeStrToBytes converts string to byte slice without memory allocation.
-//
-// The returned byte slice may be read until references to the original s exist.
-func unsafeStrToBytes(s string) []byte {
-	sh := (*reflect.StringHeader)(unsafe.Pointer(&s))
-	bh := reflect.SliceHeader{
-		Data: sh.Data,
-		Len:  sh.Len,
-		Cap:  sh.Len,
-	}
-	return *(*[]byte)(unsafe.Pointer(&bh))
-}
-
 func writeHexInt(w *bufio.Writer, n int) error {
 	if n < 0 {
 		panic("BUG: int must be positive")
@@ -318,9 +304,9 @@ func EqualBytesStr(b []byte, s string) bool {
 
 // AppendBytesStr appends src to dst and returns dst
 // (which may be newly allocated).
+//
+// This function has no performance benefits compared to append(dst, src..).
+// It's left here for backwards compatibility only.
 func AppendBytesStr(dst []byte, src string) []byte {
-	// The following code is equivalent to
-	//      return append(dst, []byte(src)...)
-	// but it is 1.5x faster in Go1.5.
-	return append(dst, unsafeStrToBytes(src)...)
+	return append(dst, src...)
 }

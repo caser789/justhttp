@@ -1085,9 +1085,9 @@ type HijackHandler func(c net.Conn)
 // The server skips calling the handler in the following cases:
 //
 //    * 'Connection: close' header exits in either request or response.
-//    * Unexpected error during wriing response to the conneciotn
+//    * Unexpected error during response writing to the conneciotn
 //
-// The server no longer processes requests from hijacked connections.
+// The server stops processes requests from hijacked connections.
 // Server limits such as Concurrency, ReadTimeout, WriteTimeout, etc.
 // aren't applied to hijacked connections.
 //
@@ -1101,6 +1101,14 @@ type HijackHandler func(c net.Conn)
 //
 func (ctx *RequestCtx) Hijack(handler HijackHandler) {
 	ctx.hijackHandler = handler
+}
+
+// IsTLS returns true if the underlying connection is tls.Conn.
+//
+// tls.Conn is an encrypted connection (aka SSL, HTTPS).
+func (ctx *RequestCtx) IsTLS() bool {
+    _, ok := ctx.c.(*tls.Conn)
+    return ok
 }
 
 func hijackConnHandler(r io.Reader, c net.Conn, s *Server, h HijackHandler) {

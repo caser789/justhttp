@@ -18,6 +18,9 @@ https://godoc.org/github.com/caser789/justhttp
 - [x] Trade memory usage with CPU usage for too much keep-alive connections.
 - [x] hijack request
 - [ ] Connection: Upgrade
+- [ ] WebSockets
+- [ ] HTTP/2.0
+- [ ] Uploaded files' parsing support
 
 # Performance optimization tips for multi-core systems.
 
