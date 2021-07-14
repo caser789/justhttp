@@ -44,6 +44,17 @@ func (w requestBodyWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// String returns request representation.
+//
+// Use Write instead of String for performance-critical code.
+func (req *Request) String() string {
+	var w bytes.Buffer
+	bw := bufio.NewWriter(&w)
+	req.Write(bw)
+	bw.Flush()
+	return string(w.Bytes())
+}
+
 // ConnectionClose returns true if 'Connection: close' header is set
 func (req *Request) ConnectionClose() bool {
 	return req.Header.ConnectionClose()
@@ -330,6 +341,17 @@ type responseBodyWriter struct {
 func (w responseBodyWriter) Write(p []byte) (int, error) {
 	w.r.body = append(w.r.body, p...)
 	return len(p), nil
+}
+
+// String returns response representation.
+//
+// Use Write instead for performance-critical code.
+func (resp *Response) String() string {
+	var w bytes.Buffer
+	bw := bufio.NewWriter(&w)
+	resp.Write(bw)
+	bw.Flush()
+	return string(w.Bytes())
 }
 
 // ConnectionClose returns true if 'Connection: close' header is set.
