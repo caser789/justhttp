@@ -158,6 +158,12 @@ func (c *Client) GetTimeout(dst []byte, url string, timeout time.Duration) (stat
 	return clientGetURLTimeout(dst, url, timeout, c)
 }
 
+type clientURLResponse struct {
+	statusCode int
+	body       []byte
+	err        error
+}
+
 // Post sends POST request to the given url with the given POST arguments.
 //
 // Response body is appended to dst, which is returned as body.
@@ -540,10 +546,9 @@ func clientDoTimeoutFreeConn(req *Request, resp *Response, timeout time.Duration
 	var ch chan error
 	chv := errorChPool.Get()
 	if chv == nil {
-		ch = make(chan error, 1)
-	} else {
-		ch = chv.(chan error)
+		chv = make(chan error, 1)
 	}
+	ch = chv.(chan error)
 
 	// Make req and resp copies, since on timeout they no longer
 	// may be accessed.
@@ -559,6 +564,7 @@ func clientDoTimeoutFreeConn(req *Request, resp *Response, timeout time.Duration
 	tcv := timerPool.Get()
 	if tcv == nil {
 		tc = time.NewTimer(timeout)
+		tcv = tc
 	} else {
 		tc = tcv.(*time.Timer)
 		initTimer(tc, timeout)
@@ -1003,13 +1009,12 @@ func clientGetURLTimeout(dst []byte, url string, timeout time.Duration, c client
 }
 
 func clientGetURLTimeoutFreeConn(dst []byte, url string, timeout time.Duration, c clientDoer) (statusCode int, body []byte, err error) {
-	var ch chan error
+	var ch chan clientURLResponse
 	chv := errorChPool.Get()
 	if chv == nil {
-		ch = make(chan error, 1)
-	} else {
-		ch = chv.(chan error)
+		chv = make(chan clientURLResponse, 1)
 	}
+	ch = chv.(chan clientURLResponse)
 
 	req := acquireRequest()
 
@@ -1020,29 +1025,32 @@ func clientGetURLTimeoutFreeConn(dst []byte, url string, timeout time.Duration, 
 	// Without this 'hack' the load on slow host could exceed MaxConns*
 	// concurrent requests, since timed out requests on client side
 	// usually continue execution on the host.
-	var statusCodeCopy int
-	var bodyCopy []byte
 	go func() {
-		var errCopy error
-		statusCodeCopy, bodyCopy, errCopy = doRequest(req, dst, url, c)
-		ch <- errCopy
+		statusCodeCopy, bodyCopy, errCopy := doRequest(req, dst, url, c)
+		ch <- clientURLResponse{
+			statusCode: statusCodeCopy,
+			body:       bodyCopy,
+			err:        errCopy,
+		}
 	}()
 
 	var tc *time.Timer
 	tcv := timerPool.Get()
 	if tcv == nil {
 		tc = time.NewTimer(timeout)
+		tcv = tc
 	} else {
 		tc = tcv.(*time.Timer)
 		initTimer(tc, timeout)
 	}
 
 	select {
-	case err = <-ch:
+	case resp := <-ch:
 		releaseRequest(req)
 		errorChPool.Put(chv)
-		statusCode = statusCodeCopy
-		body = bodyCopy
+		statusCode = resp.statusCode
+		body = resp.body
+		err = resp.err
 	case <-tc.C:
 		body = dst
 		err = ErrTimeout
