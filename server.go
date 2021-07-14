@@ -400,10 +400,10 @@ func (s *Server) serveConn(c net.Conn) error {
 		if len(errMsg) > 0 {
 			ctx = s.acquireCtx(c)
 			ctx.Error(errMsg, StatusRequestTimeout)
-            if br != nil {
-                // Close connection, since br may be attached to the old ctx via ctx.fbr.
-                ctx.SetConnectionClose()
-            }
+			if br != nil {
+				// Close connection, since br may be attached to the old ctx via ctx.fbr.
+				ctx.SetConnectionClose()
+			}
 		}
 		if s.MaxRequestsPerConn > 0 && connRequestNum >= uint64(s.MaxRequestsPerConn) {
 			ctx.SetConnectionClose()
@@ -447,7 +447,7 @@ func (s *Server) serveConn(c net.Conn) error {
 		}
 
 		if ctx.hijackHandler != nil {
-            h := ctx.hijackHandler
+			h := ctx.hijackHandler
 			var hjr io.Reader
 			hjr = c
 			if br != nil {
@@ -455,8 +455,8 @@ func (s *Server) serveConn(c net.Conn) error {
 					hjr = br
 					br = nil
 
-                    // br may point to ctx.fbr, so do not return ctx into pool.
-                    ctx = s.acquireCtx(c)
+					// br may point to ctx.fbr, so do not return ctx into pool.
+					ctx = s.acquireCtx(c)
 				}
 			}
 			if bw != nil {

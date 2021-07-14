@@ -98,6 +98,16 @@ type Client struct {
 	// Default buffer size is used if 0.
 	WriteBufferSize int
 
+	// Maximum duration for full response reading (including body).
+	//
+	// By default response read timeout is unlimited.
+	ReadTimeout time.Duration
+
+	// Maximum duration for full response writing (including body).
+	//
+	// By default request write timeout is unlimited.
+	WriteTimeout time.Duration
+
 	// Logger is used for error logging.
 	//
 	// Default logger from log package is used if not set.
@@ -188,6 +198,8 @@ func (c *Client) Do(req *Request, resp *Response) error {
 			MaxConns:        c.MaxConnsPerHost,
 			ReadBufferSize:  c.ReadBufferSize,
 			WriteBufferSize: c.WriteBufferSize,
+			ReadTimeout:     c.ReadTimeout,
+			WriteTimeout:    c.WriteTimeout,
 			Logger:          c.Logger,
 		}
 		if isTLS {
@@ -290,6 +302,16 @@ type HostClient struct {
 	//
 	// Default buffer size is used if 0.
 	WriteBufferSize int
+
+	// Maximum duration for full response reading (including body).
+	//
+	// By default response read timeout is unlimited.
+	ReadTimeout time.Duration
+
+	// Maximum duration for full response writing (including body).
+	//
+	// By default request write timeout is unlimited.
+	WriteTimeout time.Duration
 
 	// Logger is used for error logging.
 	//
@@ -530,6 +552,13 @@ func (c *HostClient) do(req *Request, resp *Response, newConn bool) (bool, error
 	}
 	conn := cc.c
 
+	if c.WriteTimeout > 0 {
+		if err = conn.SetWriteDeadline(time.Now().Add(c.WriteTimeout)); err != nil {
+			c.closeConn(cc)
+			return false, err
+		}
+	}
+
 	userAgentOld := req.Header.UserAgent()
 	if len(userAgentOld) == 0 {
 		req.Header.userAgent = c.getClientName()
@@ -556,6 +585,13 @@ func (c *HostClient) do(req *Request, resp *Response, newConn bool) (bool, error
 	if resp == nil {
 		nilResp = true
 		resp = acquireResponse()
+	}
+
+	if c.ReadTimeout > 0 {
+		if err = conn.SetReadDeadline(time.Now().Add(c.ReadTimeout)); err != nil {
+			c.closeConn(cc)
+			return false, err
+		}
 	}
 
 	br := c.acquireReader(conn)

@@ -39,7 +39,7 @@ var (
 	strCookiePath    = []byte("path")
 
 	strClose               = []byte("close")
-	strUpgrade               = []byte("Upgrade")
+	strUpgrade             = []byte("Upgrade")
 	strChunked             = []byte("chunked")
 	strIdentity            = []byte("identity")
 	strPostArgsContentType = []byte("application/x-www-form-urlencoded")

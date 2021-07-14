@@ -465,7 +465,7 @@ func (h *RequestHeader) Referer() []byte {
 }
 
 // ConnectionUpgrade returns true if 'Connection: Upgrade' header is set.
-func (h *RequestHeader) ConnectionUpgrade() bool{
+func (h *RequestHeader) ConnectionUpgrade() bool {
 	h.parseRawHeaders()
 	return bytes.HasPrefix(h.Peek("Connection"), strUpgrade)
 }

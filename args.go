@@ -405,9 +405,9 @@ func releaseArg(h []argsKV) []argsKV {
 }
 
 func appendArg(args []argsKV, key, value []byte) []argsKV {
-    var kv *argsKV
-    args, kv = allocArg(args)
-    kv.key = append(kv.key[:0], key...)
-    kv.value = append(kv.value[:0], value...)
-    return args
+	var kv *argsKV
+	args, kv = allocArg(args)
+	kv.key = append(kv.key[:0], key...)
+	kv.value = append(kv.value[:0], value...)
+	return args
 }
