@@ -3,6 +3,7 @@ package fasthttp
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -12,6 +13,14 @@ func TestWriteHexInt(t *testing.T) {
 	testWriteHexInt(t, 1, "1")
 	testWriteHexInt(t, 0x123, "123")
 	testWriteHexInt(t, 0x7fffffff, "7fffffff")
+}
+
+func testAppendUint(t *testing.T, n int) {
+	expectedS := fmt.Sprintf("%d", n)
+	s := AppendUint(nil, n)
+	if string(s) != expectedS {
+		t.Fatalf("unexpected uint %q. Expecting %q. n=%d", s, expectedS, n)
+	}
 }
 
 func testWriteHexInt(t *testing.T, n int, expectedS string) {
@@ -79,16 +88,6 @@ func TestAppendHTTPDate(t *testing.T) {
 	}
 }
 
-func testParseUintSuccess(t *testing.T, s string, expectedN int) {
-	n, err := ParseUint([]byte(s))
-	if err != nil {
-		t.Fatalf("Unexpected error when parsing %q: %s", s, err)
-	}
-	if n != expectedN {
-		t.Fatalf("Unexpected value %d. Expected %d. num=%q", n, expectedN, s)
-	}
-}
-
 func TestParseUintError(t *testing.T) {
 	// empty string
 	testParseUintError(t, "")
@@ -109,16 +108,6 @@ func TestParseUintError(t *testing.T) {
 	testParseUintError(t, "12345678901234567890")
 }
 
-func testParseUintError(t *testing.T, s string) {
-	n, err := ParseUint([]byte(s))
-	if err == nil {
-		t.Fatalf("Expecting error when parsing %q. obtained %d", s, n)
-	}
-	if n >= 0 {
-		t.Fatalf("Unexpected n=%d when parsing %q. Expected negative num", n, s)
-	}
-}
-
 func TestParseUfloatSuccess(t *testing.T) {
 	testParseUfloatSuccess(t, "0", 0)
 	testParseUfloatSuccess(t, "1.", 1.)
@@ -128,20 +117,6 @@ func TestParseUfloatSuccess(t *testing.T) {
 	testParseUfloatSuccess(t, "1234e2", 1234e2)
 	testParseUfloatSuccess(t, "1234E-5", 1234e-5)
 	testParseUfloatSuccess(t, "1.234e+3", 1.234e+3)
-}
-
-func testParseUfloatSuccess(t *testing.T, s string, expectedF float64) {
-	f, err := ParseUfloat([]byte(s))
-	if err != nil {
-		t.Fatalf("Unexpected error when parsing %q: %s", s, err)
-	}
-	delta := f - expectedF
-	if delta < 0 {
-		delta = -delta
-	}
-	if delta > expectedF*1e-10 {
-		t.Fatalf("Unexpected value when parsing %q: %f. Expected %f", s, f, expectedF)
-	}
 }
 
 func TestParseUfloatError(t *testing.T) {
@@ -178,5 +153,39 @@ func testParseUfloatError(t *testing.T, s string) {
 	}
 	if n >= 0 {
 		t.Fatalf("Expecting negative num instead of %f when parsing %q", n, s)
+	}
+}
+
+func testParseUfloatSuccess(t *testing.T, s string, expectedF float64) {
+	f, err := ParseUfloat([]byte(s))
+	if err != nil {
+		t.Fatalf("Unexpected error when parsing %q: %s", s, err)
+	}
+	delta := f - expectedF
+	if delta < 0 {
+		delta = -delta
+	}
+	if delta > expectedF*1e-10 {
+		t.Fatalf("Unexpected value when parsing %q: %f. Expected %f", s, f, expectedF)
+	}
+}
+
+func testParseUintError(t *testing.T, s string) {
+	n, err := ParseUint([]byte(s))
+	if err == nil {
+		t.Fatalf("Expecting error when parsing %q. obtained %d", s, n)
+	}
+	if n >= 0 {
+		t.Fatalf("Unexpected n=%d when parsing %q. Expected negative num", n, s)
+	}
+}
+
+func testParseUintSuccess(t *testing.T, s string, expectedN int) {
+	n, err := ParseUint([]byte(s))
+	if err != nil {
+		t.Fatalf("Unexpected error when parsing %q: %s", s, err)
+	}
+	if n != expectedN {
+		t.Fatalf("Unexpected value %d. Expected %d. num=%q", n, expectedN, s)
 	}
 }
