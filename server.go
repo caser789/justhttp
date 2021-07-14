@@ -505,21 +505,20 @@ func (s *Server) serveConn(c net.Conn) error {
 	return err
 }
 
-var globalCtxID uint64
-
 func (s *Server) acquireCtx(c net.Conn) *RequestCtx {
 	v := s.ctxPool.Get()
 	var ctx *RequestCtx
 	if v == nil {
 		ctx = &RequestCtx{
 			s: s,
+			c: c,
 		}
+		ctx.initID()
 		ctx.v = ctx
-		v = ctx
-	} else {
-		ctx = v.(*RequestCtx)
+		return ctx
 	}
-	ctx.initID()
+
+	ctx = v.(*RequestCtx)
 	ctx.c = c
 	return ctx
 }
@@ -770,6 +769,8 @@ func (ctx *RequestCtx) Init(req *Request, remoteAddr net.Addr, logger Logger) {
 	ctx.connTime = time.Now()
 	ctx.time = ctx.connTime
 }
+
+var globalCtxID uint64
 
 func (ctx *RequestCtx) initID() {
 	ctx.id = (atomic.AddUint64(&globalCtxID, 1)) << 32
