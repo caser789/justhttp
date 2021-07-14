@@ -11,6 +11,51 @@ import (
 	"time"
 )
 
+func TestServerMaxKeepaliveDuration(t *testing.T) {
+	s := &Server{
+		Handler: func(ctx *RequestCtx) {
+			time.Sleep(20 * time.Millisecond)
+		},
+		MaxKeepaliveDuration: 10 * time.Millisecond,
+	}
+
+	rw := &readWriter{}
+	rw.r.WriteString("GET /aaa HTTP/1.1\r\nHost: aa.com\r\n\r\n")
+	rw.r.WriteString("GET /bbbb HTTP/1.1\r\nHost: bbb.com\r\n\r\n")
+
+	ch := make(chan error)
+	go func() {
+		ch <- s.ServeConn(rw)
+	}()
+
+	select {
+	case err := <-ch:
+		if err != nil {
+			t.Fatalf("Unexpected error from serveConn: %s", err)
+		}
+	case <-time.After(100 * time.Millisecond):
+		t.Fatalf("timeout")
+	}
+
+	br := bufio.NewReader(&rw.w)
+	var resp Response
+	if err := resp.Read(br); err != nil {
+		t.Fatalf("Unexpected error when parsing response: %s", err)
+	}
+	if !resp.ConnectionClose() {
+		t.Fatalf("Response must have 'connection: close' header")
+	}
+	verifyResponseHeader(t, &resp.Header, 200, 0, string(defaultContentType))
+
+	data, err := ioutil.ReadAll(br)
+	if err != nil {
+		t.Fatalf("Unexpected error when reading remaining data: %s", err)
+	}
+	if len(data) != 0 {
+		t.Fatalf("Unexpected data read after the first response %q. Expecting %q", data, "")
+	}
+}
+
 func TestRequestCtxInit(t *testing.T) {
 	var ctx RequestCtx
 	var logger customLogger
@@ -547,4 +592,12 @@ func TestServerMaxRequestsPerConn(t *testing.T) {
 	if len(data) != 0 {
 		t.Fatalf("Unexpected data read after the first response %q. Expecting %q", data, "")
 	}
+}
+
+func (rw *readWriter) SetReadDeadline(t time.Time) error {
+	return nil
+}
+
+func (rw *readWriter) SetWriteDeadline(t time.Time) error {
+	return nil
 }
