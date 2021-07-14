@@ -48,11 +48,7 @@ func (w requestBodyWriter) Write(p []byte) (int, error) {
 //
 // Use Write instead of String for performance-critical code.
 func (req *Request) String() string {
-	var w bytes.Buffer
-	bw := bufio.NewWriter(&w)
-	req.Write(bw)
-	bw.Flush()
-	return string(w.Bytes())
+	return getHTTPString(req)
 }
 
 // ConnectionClose returns true if 'Connection: close' header is set
@@ -347,11 +343,7 @@ func (w responseBodyWriter) Write(p []byte) (int, error) {
 //
 // Use Write instead for performance-critical code.
 func (resp *Response) String() string {
-	var w bytes.Buffer
-	bw := bufio.NewWriter(&w)
-	resp.Write(bw)
-	bw.Flush()
-	return string(w.Bytes())
+	return getHTTPString(resp)
 }
 
 // ConnectionClose returns true if 'Connection: close' header is set.
@@ -564,4 +556,20 @@ func writeBodyFixedSize(w *bufio.Writer, r io.Reader, size int) error {
 		err = fmt.Errorf("read %d bytes from BodyStream instead of %d bytes", n, size)
 	}
 	return err
+}
+
+type httpWriter interface {
+	Write(w *bufio.Writer) error
+}
+
+func getHTTPString(hw httpWriter) string {
+	var w bytes.Buffer
+	bw := bufio.NewWriter(&w)
+	if err := hw.Write(bw); err != nil {
+		return err.Error()
+	}
+	if err := bw.Flush(); err != nil {
+		return err.Error()
+	}
+	return string(w.Bytes())
 }
