@@ -48,6 +48,11 @@ type ResponseHeader struct {
 	cookies []argsKV
 }
 
+// ConnectionUpgrade returns true if 'Connection: Upgrade' header is set.
+func (h *ResponseHeader) ConnectionUpgrade() bool {
+	return bytes.HasPrefix(h.Peek("Connection"), strUpgrade)
+}
+
 // StatusCode returns response status code.
 func (h *ResponseHeader) StatusCode() int {
 	return h.statusCode
@@ -425,18 +430,18 @@ func (h *ResponseHeader) parseHeaders(buf []byte) (int, error) {
 				h.contentLength = -1
 				h.h = setArg(h.h, strTransferEncoding, strChunked)
 			}
-		case bytes.Equal(s.key, strConnection):
-			if bytes.Equal(s.value, strClose) {
-				h.connectionClose = true
-			}
 		case bytes.Equal(s.key, strSetCookie):
 			h.cookies, kv = allocArg(h.cookies)
 			kv.key = getCookieKey(kv.key, s.value)
 			kv.value = append(kv.value[:0], s.value...)
+		case bytes.Equal(s.key, strConnection):
+			if bytes.Equal(s.value, strClose) {
+				h.connectionClose = true
+			} else {
+				h.h = appendArg(h.h, s.key, s.value)
+			}
 		default:
-			h.h, kv = allocArg(h.h)
-			kv.key = append(kv.key[:0], s.key...)
-			kv.value = append(kv.value[:0], s.value...)
+			h.h = appendArg(h.h, s.key, s.value)
 		}
 	}
 	if s.err != nil {
@@ -447,7 +452,7 @@ func (h *ResponseHeader) parseHeaders(buf []byte) (int, error) {
 	if h.contentLength < 0 {
 		h.contentLengthBytes = h.contentLengthBytes[:0]
 	}
-	if h.contentLength == -2 {
+	if h.contentLength == -2 && !h.ConnectionUpgrade() {
 		h.h = setArg(h.h, strTransferEncoding, strIdentity)
 		h.connectionClose = true
 	}
@@ -457,6 +462,12 @@ func (h *ResponseHeader) parseHeaders(buf []byte) (int, error) {
 // Referer returns Referer header value.
 func (h *RequestHeader) Referer() []byte {
 	return h.PeekBytes(strReferer)
+}
+
+// ConnectionUpgrade returns true if 'Connection: Upgrade' header is set.
+func (h *RequestHeader) ConnectionUpgrade() bool{
+	h.parseRawHeaders()
+	return bytes.HasPrefix(h.Peek("Connection"), strUpgrade)
 }
 
 // SetReferer sets Referer header value.
@@ -628,12 +639,13 @@ func (h *ResponseHeader) SetCanonical(key, value []byte) {
 	case bytes.Equal(strConnection, key):
 		if bytes.Equal(strClose, value) {
 			h.SetConnectionClose()
+		} else {
+			h.h = setArg(h.h, key, value)
 		}
-		// skip other 'Connection' shit :)
 	case bytes.Equal(strTransferEncoding, key):
 		// Transfer-Encoding is managed automatically.
 	case bytes.Equal(strDate, key):
-		// Date is managed automatically
+		// Date is managed automatically.
 	default:
 		h.h = setArg(h.h, key, value)
 	}
@@ -710,7 +722,7 @@ func (h *ResponseHeader) peek(key []byte) []byte {
 		if h.ConnectionClose() {
 			return strClose
 		}
-		return nil
+		return peekArgBytes(h.h, key)
 	case bytes.Equal(strContentLength, key):
 		return h.contentLengthBytes
 	default:
@@ -950,12 +962,11 @@ func (h *RequestHeader) SetCanonical(key, value []byte) {
 	case bytes.Equal(strConnection, key):
 		if bytes.Equal(strClose, value) {
 			h.SetConnectionClose()
+		} else {
+			h.h = setArg(h.h, key, value)
 		}
-		// skip other 'Connection' shit :)
 	case bytes.Equal(strTransferEncoding, key):
-		// Transfer-Encoding is managed automatically
-	case bytes.Equal(strConnection, key):
-		// Connection is managed automatically
+		// Transfer-Encoding is managed automatically.
 	default:
 		h.h = setArg(h.h, key, value)
 	}
@@ -1007,7 +1018,7 @@ func (h *RequestHeader) peek(key []byte) []byte {
 		if h.ConnectionClose() {
 			return strClose
 		}
-		return nil
+		return peekArgBytes(h.h, key)
 	case bytes.Equal(strContentLength, key):
 		return h.contentLengthBytes
 	default:
@@ -1148,7 +1159,6 @@ func (h *RequestHeader) parseHeaders(buf []byte) (int, error) {
 	var s headerScanner
 	s.b = buf
 	var err error
-	var kv *argsKV
 	for s.next() {
 		switch {
 		case bytes.Equal(s.key, strHost):
@@ -1171,13 +1181,13 @@ func (h *RequestHeader) parseHeaders(buf []byte) (int, error) {
 				h.h = setArg(h.h, strTransferEncoding, strChunked)
 			}
 		case bytes.Equal(s.key, strConnection):
-			if bytes.Equal(s.key, strConnection) {
+			if bytes.Equal(s.value, strClose) {
 				h.connectionClose = true
+			} else {
+				h.h = appendArg(h.h, s.key, s.value)
 			}
 		default:
-			h.h, kv = allocArg(h.h)
-			kv.key = append(kv.key[:0], s.key...)
-			kv.value = append(kv.value[:0], s.value...)
+			h.h = appendArg(h.h, s.key, s.value)
 		}
 	}
 	if s.err != nil {
@@ -1188,7 +1198,6 @@ func (h *RequestHeader) parseHeaders(buf []byte) (int, error) {
 	if h.contentLength < 0 {
 		h.contentLengthBytes = h.contentLengthBytes[:0]
 	}
-
 	if !h.IsPost() {
 		h.contentLength = 0
 		h.contentLengthBytes = h.contentLengthBytes[:0]
