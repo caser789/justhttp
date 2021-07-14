@@ -1328,8 +1328,8 @@ func (h *RequestHeader) AppendBytes(dst []byte) []byte {
 		dst = appendHeaderLine(dst, strHost, host)
 	}
 
+	contentType := h.ContentType()
 	if h.IsPost() {
-		contentType := h.ContentType()
 		if len(contentType) == 0 {
 			contentType = strPostArgsContentType
 		}
@@ -1338,6 +1338,8 @@ func (h *RequestHeader) AppendBytes(dst []byte) []byte {
 		if len(h.contentLengthBytes) > 0 {
 			dst = appendHeaderLine(dst, strContentLength, h.contentLengthBytes)
 		}
+	} else if len(contentType) > 0 {
+		dst = appendHeaderLine(dst, strContentType, contentType)
 	}
 
 	for i, n := 0, len(h.h); i < n; i++ {
