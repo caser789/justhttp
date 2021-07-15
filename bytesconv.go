@@ -231,19 +231,6 @@ func AppendUint(dst []byte, n int) []byte {
 	return dst
 }
 
-func unhex(c byte) int {
-	if c >= '0' && c <= '9' {
-		return int(c - '0')
-	}
-	if c >= 'a' && c <= 'f' {
-		return 10 + int(c-'a')
-	}
-	if c >= 'A' && c <= 'F' {
-		return 10 + int(c-'A')
-	}
-	return -1
-}
-
 func appendQuotedArg(dst, v []byte) []byte {
 	for _, c := range v {
 		if c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '/' || c == '.' {
