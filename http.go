@@ -512,6 +512,7 @@ func (resp *Response) CopyTo(dst *Response) {
 func (resp *Response) Reset() {
 	resp.Header.Reset()
 	resp.clearSkipHeader()
+	resp.SkipBody = false
 }
 
 func (resp *Response) clearSkipHeader() {

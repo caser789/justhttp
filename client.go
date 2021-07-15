@@ -238,6 +238,7 @@ func (c *Client) Do(req *Request, resp *Response) error {
 			Addr:                addMissingPort(string(host), isTLS),
 			Name:                c.Name,
 			Dial:                c.Dial,
+			IsTLS:               isTLS,
 			DialDualStack:       c.DialDualStack,
 			TLSConfig:           c.TLSConfig,
 			MaxConns:            c.MaxConnsPerHost,
@@ -246,9 +247,6 @@ func (c *Client) Do(req *Request, resp *Response) error {
 			ReadTimeout:         c.ReadTimeout,
 			WriteTimeout:        c.WriteTimeout,
 			MaxResponseBodySize: c.MaxResponseBodySize,
-		}
-		if isTLS {
-			hc.IsTLS = true
 		}
 		m[string(host)] = hc
 		if len(m) == 1 {
