@@ -472,16 +472,20 @@ func (s *Server) serveConn(c net.Conn) error {
 				break
 			}
 		}
+
+		connectionClose = ctx.Response.Header.ConnectionClose() || ctx.Request.Header.ConnectionClose()
+		if connectionClose {
+			ctx.Response.Header.SetCanonical(strConnection, strClose)
+		}
+		if !connectionClose && !ctx.Request.Header.IsHTTP11() {
+			// set 'Connection: keep-alive' response header for non-HTTP/1.1 request.
+			ctx.Response.Header.SetCanonical(strConnection, strKeepAlive)
+		}
 		if bw == nil {
 			bw = acquireWriter(ctx)
 		}
 		if err = writeResponse(ctx, bw); err != nil {
 			break
-		}
-		connectionClose = ctx.Response.Header.ConnectionClose() || ctx.Request.Header.ConnectionClose()
-		if !connectionClose && !ctx.Request.Header.IsHTTP11() {
-			// set 'Connection: keep-alive' response headr for non-HTTP/1.1 request.
-			ctx.Response.Header.SetCanonical(strConnection, strKeepAlive)
 		}
 
 		if br == nil || connectionClose {
@@ -968,6 +972,12 @@ func (ctx *RequestCtx) SetContentTypeBytes(contentType []byte) {
 func (ctx *RequestCtx) Success(contentType string, body []byte) {
 	ctx.SetContentType(contentType)
 	ctx.SetBody(body)
+}
+
+// SuccessString sets response Content-Type and body to the given values.
+func (ctx *RequestCtx) SuccessString(contentType, body string) {
+	ctx.SetContentType(contentType)
+	ctx.SetBodyString(body)
 }
 
 // SetConnectionClose sets 'Connection: close' response header and closes
