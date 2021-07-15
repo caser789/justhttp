@@ -9,8 +9,6 @@ import (
 	"io"
 	"math/rand"
 	"net"
-	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -24,10 +22,11 @@ import (
 // Response is ignored if resp is nil.
 //
 // Client determines the server to be requested in the following order:
-// - from RequestURI if it contains full url with scheme and host;
-// - from Host header otherwise.
 //
-// ErrNoFreeConns is returned if all Client.MaxConnsPerHost connections
+//   - from RequestURI if it contains full url with scheme and host;
+//   - from Host header otherwise.
+//
+// ErrNoFreeConns is returned if all DefaultMaxConnsPerHost connections
 // to the requested host are busy.
 func Do(req *Request, resp *Response) error {
 	return defaultClient.Do(req, resp)
@@ -40,8 +39,9 @@ func Do(req *Request, resp *Response) error {
 // scheme and host) or non-zero Host header + RequestURI.
 //
 // Client determines the server to be requested in the following order:
-// - from RequestURI if it contains full url with scheme and host;
-// - from Host header otherwise.
+//
+//   - from RequestURI if it contains full url with scheme and host;
+//   - from Host header otherwise.
 //
 // ErrTimeout is returned if the response wasn't returned during
 // the given timeout.
@@ -49,9 +49,9 @@ func DoTimeout(req *Request, resp *Response, timeout time.Duration) error {
 	return defaultClient.DoTimeout(req, resp, timeout)
 }
 
-// Get appends url contents into dst and returns it as body.
+// Get appends url contents to dst and returns it as body.
 //
-// New body buffer is allocated if dst is nil
+// New body buffer is allocated if dst is nil.
 func Get(dst []byte, url string) (statusCode int, body []byte, err error) {
 	return defaultClient.Get(dst, url)
 }
@@ -60,7 +60,7 @@ func Get(dst []byte, url string) (statusCode int, body []byte, err error) {
 //
 // New body buffer is allocated if dst is nil.
 //
-// ErrTimeout error is returned if url contents coundn't be fetched
+// ErrTimeout error is returned if url contents couldn't be fetched
 // during the given timeout.
 func GetTimeout(dst []byte, url string, timeout time.Duration) (statusCode int, body []byte, err error) {
 	return defaultClient.GetTimeout(dst, url, timeout)
@@ -80,6 +80,10 @@ func Post(dst []byte, url string, postArgs *Args) (statusCode int, body []byte, 
 var defaultClient Client
 
 // Client implements http client.
+//
+// Copying Client by value is prohibited. Create new instance instead.
+//
+// It is safe calling Client methods from concurrently running goroutines.
 type Client struct {
 	// Client name. Used in User-Agent request header.
 	//
@@ -88,16 +92,16 @@ type Client struct {
 
 	// Callback for establishing new connections to hosts.
 	//
-	// Default TCP dialer is used if not set.
+	// Default TCPDialer is used if not set.
 	Dial DialFunc
 
-	// Attempt to connect to both ipv4 and ipv6 addreses if set to true.
+	// Attempt to connect to both ipv4 and ipv6 addresses if set to true.
 	//
 	// This option is used only if default TCP dialer is used,
 	// i.e. if Dial is blank.
 	//
 	// By default client connects only to ipv4 addresses,
-	// since unfortunately ipv6 remains broken in many networks worldwise :)
+	// since unfortunately ipv6 remains broken in many networks worldwide :)
 	DialDualStack bool
 
 	// TLS config for https connections.
@@ -126,7 +130,7 @@ type Client struct {
 	// By default response read timeout is unlimited.
 	ReadTimeout time.Duration
 
-	// Maximum duration for full response writing (including body).
+	// Maximum duration for full request writing (including body).
 	//
 	// By default request write timeout is unlimited.
 	WriteTimeout time.Duration
@@ -144,32 +148,28 @@ type Client struct {
 	ms    map[string]*HostClient
 }
 
-// Get appends url contents into dst and returns it as body.
+// Get appends url contents to dst and returns it as body.
 //
 // New body buffer is allocated if dst is nil.
 func (c *Client) Get(dst []byte, url string) (statusCode int, body []byte, err error) {
 	return clientGetURL(dst, url, c)
 }
 
-// GetTimeout appends url contents to dst and returnes it as body.
+// GetTimeout appends url contents to dst and returns it as body.
 //
 // New body buffer is allocated if dst is nil.
 //
-// ErrTimeout error is returned if url contents coundn't be fetched
+// ErrTimeout error is returned if url contents couldn't be fetched
 // during the given timeout.
 func (c *Client) GetTimeout(dst []byte, url string, timeout time.Duration) (statusCode int, body []byte, err error) {
 	return clientGetURLTimeout(dst, url, timeout, c)
 }
 
-type clientURLResponse struct {
-	statusCode int
-	body       []byte
-	err        error
-}
-
 // Post sends POST request to the given url with the given POST arguments.
 //
 // Response body is appended to dst, which is returned as body.
+//
+// New body buffer is allocated if dst is nil.
 //
 // Empty POST body is sent if postArgs is nil.
 func (c *Client) Post(dst []byte, url string, postArgs *Args) (statusCode int, body []byte, err error) {
@@ -183,8 +183,9 @@ func (c *Client) Post(dst []byte, url string, postArgs *Args) (statusCode int, b
 // scheme and host) or non-zero Host header + RequestURI.
 //
 // Client determines the server to be requested in the following order:
-// - from RequestURI if it contains full url with scheme and host;
-// - from Host header otherwise.
+//
+//   - from RequestURI if it contains full url with scheme and host;
+//   - from Host header otherwise.
 //
 // ErrTimeout is returned if the response wasn't returned during
 // the given timeout.
@@ -200,8 +201,9 @@ func (c *Client) DoTimeout(req *Request, resp *Response, timeout time.Duration) 
 // Response is ignored if resp is nil.
 //
 // Client determines the server to be requested in the following order:
-// - from RequestURI if it contains full url with scheme and host;
-// - from Host header otherwise.
+//
+//   - from RequestURI if it contains full url with scheme and host;
+//   - from Host header otherwise.
 //
 // ErrNoFreeConns is returned if all Client.MaxConnsPerHost connections
 // to the requested host are busy.
@@ -238,8 +240,8 @@ func (c *Client) Do(req *Request, resp *Response) error {
 			Addr:                addMissingPort(string(host), isTLS),
 			Name:                c.Name,
 			Dial:                c.Dial,
-			IsTLS:               isTLS,
 			DialDualStack:       c.DialDualStack,
+			IsTLS:               isTLS,
 			TLSConfig:           c.TLSConfig,
 			MaxConns:            c.MaxConnsPerHost,
 			ReadBufferSize:      c.ReadBufferSize,
@@ -291,29 +293,32 @@ const DefaultMaxConnsPerHost = 100
 // DialFunc must establish connection to addr.
 //
 // There is no need in establishing TLS (SSL) connection for https.
-// The client automatically converts connection to TLS.
+// The client automatically converts connection to TLS
 // if HostClient.IsTLS is set.
 //
 // TCP address passed to DialFunc always contains host and port.
 // Example TCP addr values:
 //
-// - foobar.com:80
-// - foobar.com:443
-// - foobar.com:8080
+//   - foobar.com:80
+//   - foobar.com:443
+//   - foobar.com:8080
 type DialFunc func(addr string) (net.Conn, error)
 
 // HostClient is a single-host http client. It can make http requests
 // to the given Addr only.
 //
-// It is forbidden copying HostClient instances.
+// It is forbidden copying HostClient instances. Create new instances instead.
+//
+// It is safe calling HostClient methods from concurrently running goroutines.
 type HostClient struct {
 	// HTTP server host address, which is passed to Dial.
 	//
-	// The address MUST contain port if it is TCP. For example,
+	// The address may contain port if default dialer is used.
+	// For example,
 	//
-	// - foobar.com:80
-	// - foobar.com:443
-	// - foobar.com:8080
+	//    - foobar.com:80
+	//    - foobar.com:443
+	//    - foobar.com:8080
 	Addr string
 
 	// Client name. Used in User-Agent request header.
@@ -321,7 +326,7 @@ type HostClient struct {
 
 	// Callback for establishing new connection to the host.
 	//
-	// Default TCP dialer is used if not set.
+	// Default TCPDialer is used if not set.
 	Dial DialFunc
 
 	// Attempt to connect to both ipv4 and ipv6 host addresses
@@ -331,14 +336,14 @@ type HostClient struct {
 	// i.e. if Dial is blank.
 	//
 	// By default client connects only to ipv4 addresses,
-	// since unfortunately ipv6 remains broken in many network wordwise :)
+	// since unfortunately ipv6 remains broken in many networks worldwide :)
 	DialDualStack bool
-
-	// Optional TLS config.
-	TLSConfig *tls.Config
 
 	// Whether to use TLS (aka SSL or HTTPS) for host connections.
 	IsTLS bool
+
+	// Optional TLS config.
+	TLSConfig *tls.Config
 
 	// Maximum number of connections to the host which may be established.
 	//
@@ -361,7 +366,7 @@ type HostClient struct {
 	// By default response read timeout is unlimited.
 	ReadTimeout time.Duration
 
-	// Maximum duration for full response writing (including body).
+	// Maximum duration for full request writing (including body).
 	//
 	// By default request write timeout is unlimited.
 	WriteTimeout time.Duration
@@ -406,7 +411,7 @@ func (c *HostClient) LastUseTime() time.Time {
 	return time.Unix(startTimeUnix+int64(n), 0)
 }
 
-// Get appends url contents into dst and returns it as body.
+// Get appends url contents to dst and returns it as body.
 //
 // New body buffer is allocated if dst is nil.
 func (c *HostClient) Get(dst []byte, url string) (statusCode int, body []byte, err error) {
@@ -417,8 +422,8 @@ func (c *HostClient) Get(dst []byte, url string) (statusCode int, body []byte, e
 //
 // New body buffer is allocated if dst is nil.
 //
-// ErrTimeout error is returned if url contents coundn't be fetched
-// during the given timeout
+// ErrTimeout error is returned if url contents couldn't be fetched
+// during the given timeout.
 func (c *HostClient) GetTimeout(dst []byte, url string, timeout time.Duration) (statusCode int, body []byte, err error) {
 	return clientGetURLTimeout(dst, url, timeout, c)
 }
@@ -444,6 +449,93 @@ func clientGetURL(dst []byte, url string, c clientDoer) (statusCode int, body []
 	statusCode, body, err = doRequestFollowRedirects(req, dst, url, c)
 
 	releaseRequest(req)
+	return statusCode, body, err
+}
+
+func clientGetURLTimeout(dst []byte, url string, timeout time.Duration, c clientDoer) (statusCode int, body []byte, err error) {
+	if timeout <= 0 {
+		return 0, dst, ErrTimeout
+	}
+
+	deadline := time.Now().Add(timeout)
+	for {
+		statusCode, body, err = clientGetURLTimeoutFreeConn(dst, url, timeout, c)
+		if err != ErrNoFreeConns {
+			return statusCode, body, err
+		}
+		timeout = -time.Since(deadline)
+		if timeout <= 0 {
+			return 0, dst, ErrTimeout
+		}
+		sleepTime := (10 + time.Duration(rand.Intn(100))) * time.Millisecond
+		if sleepTime > timeout {
+			sleepTime = timeout
+		}
+		time.Sleep(sleepTime)
+		timeout = -time.Since(deadline)
+		if timeout <= 0 {
+			return 0, dst, ErrTimeout
+		}
+	}
+}
+
+type clientURLResponse struct {
+	statusCode int
+	body       []byte
+	err        error
+}
+
+func clientGetURLTimeoutFreeConn(dst []byte, url string, timeout time.Duration, c clientDoer) (statusCode int, body []byte, err error) {
+	var ch chan clientURLResponse
+	chv := errorChPool.Get()
+	if chv == nil {
+		chv = make(chan clientURLResponse, 1)
+	}
+	ch = chv.(chan clientURLResponse)
+
+	req := acquireRequest()
+
+	// Note that the request continues execution on ErrTimeout until
+	// client-specific ReadTimeout exceeds. This helps limiting load
+	// on slow hosts by MaxConns* concurrent requests.
+	//
+	// Without this 'hack' the load on slow host could exceed MaxConns*
+	// concurrent requests, since timed out requests on client side
+	// usually continue execution on the host.
+	go func() {
+		statusCodeCopy, bodyCopy, errCopy := doRequestFollowRedirects(req, dst, url, c)
+		ch <- clientURLResponse{
+			statusCode: statusCodeCopy,
+			body:       bodyCopy,
+			err:        errCopy,
+		}
+	}()
+
+	var tc *time.Timer
+	tcv := timerPool.Get()
+	if tcv == nil {
+		tc = time.NewTimer(timeout)
+		tcv = tc
+	} else {
+		tc = tcv.(*time.Timer)
+		initTimer(tc, timeout)
+	}
+
+	select {
+	case resp := <-ch:
+		releaseRequest(req)
+		errorChPool.Put(chv)
+		statusCode = resp.statusCode
+		body = resp.body
+		err = resp.err
+	case <-tc.C:
+		body = dst
+		err = ErrTimeout
+	}
+
+	stopTimer(tc)
+	timerPool.Put(tcv)
+
 	return statusCode, body, err
 }
 
@@ -507,17 +599,17 @@ func doRequestFollowRedirects(req *Request, dst []byte, url string, c clientDoer
 	return statusCode, body, err
 }
 
-var (
-	requestPool  sync.Pool
-	responsePool sync.Pool
-)
-
 func getRedirectURL(baseURL string, location []byte) string {
 	var u URI
 	u.Parse(nil, []byte(baseURL))
 	u.UpdateBytes(location)
 	return u.String()
 }
+
+var (
+	requestPool  sync.Pool
+	responsePool sync.Pool
+)
 
 func acquireRequest() *Request {
 	v := requestPool.Get()
@@ -598,6 +690,13 @@ func clientDoTimeoutFreeConn(req *Request, resp *Response, timeout time.Duration
 	req.CopyTo(reqCopy)
 	respCopy := acquireResponse()
 
+	// Note that the request continues execution on ErrTimeout until
+	// client-specific ReadTimeout exceeds. This helps limiting load
+	// on slow hosts by MaxConns* concurrent requests.
+	//
+	// Without this 'hack' the load on slow host could exceed MaxConns*
+	// concurrent requests, since timed out requests on client side
+	// usually continue execution on the host.
 	go func() {
 		ch <- c.Do(reqCopy, respCopy)
 	}()
@@ -902,8 +1001,6 @@ func (c *HostClient) releaseReader(br *bufio.Reader) {
 	c.readerPool.Put(br)
 }
 
-var dnsCacheDuration = time.Minute
-
 var defaultTLSConfig = &tls.Config{
 	InsecureSkipVerify: true,
 }
@@ -911,7 +1008,19 @@ var defaultTLSConfig = &tls.Config{
 func (c *HostClient) dialHost() (net.Conn, error) {
 	dial := c.Dial
 	if dial == nil {
-		dial = c.defaultDialFunc
+		if c.IsTLS {
+			if c.DialDualStack {
+				dial = DialTLSDualStack
+			} else {
+				dial = DialTLS
+			}
+		} else {
+			if c.DialDualStack {
+				dial = DialDualStack
+			} else {
+				dial = Dial
+			}
+		}
 	}
 	conn, err := dial(c.Addr)
 	if err != nil {
@@ -930,96 +1039,6 @@ func (c *HostClient) dialHost() (net.Conn, error) {
 	return conn, nil
 }
 
-func (c *HostClient) defaultDialFunc(addr string) (net.Conn, error) {
-	tcpAddr, err := c.getTCPAddr(addr)
-	if err != nil {
-		return nil, err
-	}
-	network := "tcp4"
-	if c.DialDualStack {
-		network = "tcp"
-	}
-	return net.DialTCP(network, nil, tcpAddr)
-}
-
-func (c *HostClient) getTCPAddr(addr string) (*net.TCPAddr, error) {
-	addr = addMissingPort(addr, c.IsTLS)
-
-	c.tcpAddrsLock.Lock()
-	tcpAddrs := c.tcpAddrs
-	if tcpAddrs != nil && !c.tcpAddrsPending && time.Since(c.tcpAddrsResolveTime) > dnsCacheDuration {
-		c.tcpAddrsPending = true
-		tcpAddrs = nil
-	}
-	c.tcpAddrsLock.Unlock()
-
-	if tcpAddrs == nil {
-		var err error
-		if tcpAddrs, err = resolveTCPAddrs(addr, c.DialDualStack); err != nil {
-			c.tcpAddrsLock.Lock()
-			c.tcpAddrsPending = false
-			c.tcpAddrsLock.Unlock()
-			return nil, err
-		}
-
-		c.tcpAddrsLock.Lock()
-		c.tcpAddrs = tcpAddrs
-		c.tcpAddrsResolveTime = time.Now()
-		c.tcpAddrsPending = false
-		c.tcpAddrsLock.Unlock()
-	}
-
-	tcpAddr := &tcpAddrs[0]
-	n := len(tcpAddrs)
-	if n > 1 {
-		n := atomic.AddUint32(&c.tcpAddrsIdx, 1)
-		tcpAddr = &tcpAddrs[n%uint32(n)]
-	}
-	return tcpAddr, nil
-}
-
-func addMissingPort(addr string, isTLS bool) string {
-	n := strings.Index(addr, ":")
-	if n >= 0 {
-		return addr
-	}
-	port := 80
-	if isTLS {
-		port = 443
-	}
-	return fmt.Sprintf("%s:%d", addr, port)
-}
-
-func resolveTCPAddrs(addr string, dualStack bool) ([]net.TCPAddr, error) {
-	host, portS, err := net.SplitHostPort(addr)
-	if err != nil {
-		return nil, err
-	}
-	port, err := strconv.Atoi(portS)
-	if err != nil {
-		return nil, err
-	}
-
-	ips, err := net.LookupIP(host)
-	if err != nil {
-		return nil, err
-	}
-
-	n := len(ips)
-	addrs := make([]net.TCPAddr, 0, n)
-	for i := 0; i < n; i++ {
-		ip := ips[i]
-		if !dualStack && ip.To4() == nil {
-			continue
-		}
-		addrs = append(addrs, net.TCPAddr{
-			IP:   ip,
-			Port: port,
-		})
-	}
-	return addrs, nil
-}
-
 func (c *HostClient) getClientName() []byte {
 	v := c.clientName.Load()
 	var clientName []byte
@@ -1033,85 +1052,4 @@ func (c *HostClient) getClientName() []byte {
 		clientName = v.([]byte)
 	}
 	return clientName
-}
-
-func clientGetURLTimeout(dst []byte, url string, timeout time.Duration, c clientDoer) (statusCode int, body []byte, err error) {
-	if timeout <= 0 {
-		return 0, dst, ErrTimeout
-	}
-
-	deadline := time.Now().Add(timeout)
-	for {
-		statusCode, body, err = clientGetURLTimeoutFreeConn(dst, url, timeout, c)
-		if err != ErrNoFreeConns {
-			return statusCode, body, err
-		}
-		timeout = -time.Since(deadline)
-		if timeout <= 0 {
-			return 0, dst, ErrTimeout
-		}
-		sleepTime := (10 + time.Duration(rand.Intn(100))) * time.Millisecond
-		if sleepTime > timeout {
-			sleepTime = timeout
-		}
-		time.Sleep(sleepTime)
-		timeout = -time.Since(deadline)
-		if timeout <= 0 {
-			return 0, dst, ErrTimeout
-		}
-	}
-}
-
-func clientGetURLTimeoutFreeConn(dst []byte, url string, timeout time.Duration, c clientDoer) (statusCode int, body []byte, err error) {
-	var ch chan clientURLResponse
-	chv := errorChPool.Get()
-	if chv == nil {
-		chv = make(chan clientURLResponse, 1)
-	}
-	ch = chv.(chan clientURLResponse)
-
-	req := acquireRequest()
-
-	// Note that the request continues execution on ErrTimeout until
-	// client-specific ReadTimeout exceeds. This helps limiting load
-	// on slow hosts by MaxConns* concurrent requests.
-	//
-	// Without this 'hack' the load on slow host could exceed MaxConns*
-	// concurrent requests, since timed out requests on client side
-	// usually continue execution on the host.
-	go func() {
-		statusCodeCopy, bodyCopy, errCopy := doRequestFollowRedirects(req, dst, url, c)
-		ch <- clientURLResponse{
-			statusCode: statusCodeCopy,
-			body:       bodyCopy,
-			err:        errCopy,
-		}
-	}()
-
-	var tc *time.Timer
-	tcv := timerPool.Get()
-	if tcv == nil {
-		tc = time.NewTimer(timeout)
-		tcv = tc
-	} else {
-		tc = tcv.(*time.Timer)
-		initTimer(tc, timeout)
-	}
-
-	select {
-	case resp := <-ch:
-		releaseRequest(req)
-		errorChPool.Put(chv)
-		statusCode = resp.statusCode
-		body = resp.body
-		err = resp.err
-	case <-tc.C:
-		body = dst
-		err = ErrTimeout
-	}
-
-	stopTimer(tc)
-	timerPool.Put(tcv)
-
-	return statusCode, body, err
 }
