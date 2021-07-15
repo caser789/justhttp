@@ -196,17 +196,24 @@ func int2hexbyte(n int) byte {
 	return 'a' + byte(n) - 10
 }
 
+var hex2intTable = func() []byte {
+	b := make([]byte, 255)
+	for i := byte(0); i < 255; i++ {
+		c := byte(0)
+		if i >= '0' && i <= '9' {
+			c = 1 + i - '0'
+		} else if i >= 'a' && i <= 'f' {
+			c = 1 + i - 'a' + 10
+		} else if i >= 'A' && i <= 'F' {
+			c = 1 + i - 'A' + 10
+		}
+		b[i] = c
+	}
+	return b
+}()
+
 func hexbyte2int(c byte) int {
-	if c >= '0' && c <= '9' {
-		return int(c - '0')
-	}
-	if c >= 'a' && c <= 'f' {
-		return int(c - 'a' + 10)
-	}
-	if c >= 'A' && c <= 'F' {
-		return int(c - 'A' + 10)
-	}
-	return -1
+	return int(hex2intTable[c]) - 1
 }
 
 // AppendUint appends n to dst and returns dst (which may be newly allocated).
