@@ -547,7 +547,7 @@ func (h *RequestHeader) SetConnectionClose() {
 // It may be negative:
 // -1 means Transfer-Encoding: chunked.
 func (h *RequestHeader) ContentLength() int {
-	if !h.IsPost() && !h.IsPut() {
+	if h.noBody() {
 		return 0
 	}
 	h.parseRawHeaders()
@@ -1109,6 +1109,10 @@ func (h *RequestHeader) tryRead(r *bufio.Reader, n int) error {
 	return nil
 }
 
+func (h *RequestHeader) noBody() bool {
+	return h.IsGet() || h.IsHead()
+}
+
 func (h *RequestHeader) parse(buf []byte) (int, error) {
 	m, err := h.parseFirstLine(buf)
 	if err != nil {
@@ -1116,7 +1120,7 @@ func (h *RequestHeader) parse(buf []byte) (int, error) {
 	}
 
 	var n int
-	if h.IsPost() || h.IsPut() {
+	if !h.noBody() {
 		n, err = h.parseHeaders(buf[m:])
 		if err != nil {
 			return 0, err
@@ -1242,7 +1246,7 @@ func (h *RequestHeader) parseHeaders(buf []byte) (int, error) {
 	if h.contentLength < 0 {
 		h.contentLengthBytes = h.contentLengthBytes[:0]
 	}
-	if !h.IsPost() && !h.IsPut() {
+	if h.noBody() {
 		h.contentLength = 0
 		h.contentLengthBytes = h.contentLengthBytes[:0]
 	}
@@ -1334,7 +1338,7 @@ func (h *RequestHeader) AppendBytes(dst []byte) []byte {
 	}
 
 	contentType := h.ContentType()
-	if h.IsPost() || h.IsPut() {
+	if !h.noBody() {
 		if len(contentType) == 0 {
 			contentType = strPostArgsContentType
 		}
