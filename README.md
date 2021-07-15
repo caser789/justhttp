@@ -25,6 +25,7 @@ https://godoc.org/github.com/caser789/justhttp
     - [x] a {k: v} store inside RequestCtx
 - [ ] Handle static files
     - [x] Handle large file
+- [ ] Use sendfile syscall
 
 # Performance optimization tips for multi-core systems.
 
