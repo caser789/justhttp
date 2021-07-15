@@ -444,8 +444,9 @@ func (s *Server) serveConn(c net.Conn) error {
 
 		errMsg = ctx.timeoutErrMsg
 		if len(errMsg) > 0 {
+			statusCode := ctx.timeoutStatusCode
 			ctx = s.acquireCtx(c)
-			ctx.Error(errMsg, StatusRequestTimeout)
+			ctx.Error(errMsg, statusCode)
 			if br != nil {
 				// Close connection, since br may be attached to the old ctx via ctx.fbr.
 				ctx.SetConnectionClose()
@@ -683,9 +684,10 @@ type RequestCtx struct {
 	c      net.Conn
 	fbr    firstByteReader
 
-	timeoutErrMsg string
-	timeoutCh     chan struct{}
-	timeoutTimer  *time.Timer
+	timeoutErrMsg     string
+	timeoutStatusCode int
+	timeoutCh         chan struct{}
+	timeoutTimer      *time.Timer
 
 	hijackHandler HijackHandler
 
@@ -1049,7 +1051,12 @@ func (ctx *RequestCtx) TimeoutErrMsg() string {
 // TimouetError MUST be called before returning from RequestsHandler if there are
 // references to ctx and/or its members in other goroutines.
 func (ctx *RequestCtx) TimeoutError(msg string) {
+	ctx.TimeoutErrorWithCode(msg, StatusRequestTimeout)
+}
+
+func (ctx *RequestCtx) TimeoutErrorWithCode(msg string, statusCode int) {
 	ctx.timeoutErrMsg = msg
+	ctx.timeoutStatusCode = statusCode
 }
 
 // MultipartForm returns requests' multipart form.
