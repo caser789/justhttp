@@ -23,7 +23,8 @@ https://godoc.org/github.com/caser789/justhttp
 - [ ] Uploaded files' parsing support
 - [ ] Middleware friendly
     - [x] a {k: v} store inside RequestCtx
-- [ ] Handle stack files
+- [ ] Handle static files
+    - [x] Handle large file
 
 # Performance optimization tips for multi-core systems.
 

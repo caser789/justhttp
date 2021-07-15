@@ -90,7 +90,7 @@ type fsFile struct {
 	bigFilesLock sync.Mutex
 }
 
-func (ff *fsFile) Reader(incrementReaders bool) io.Reader {
+func (ff *fsFile) Reader(incrementReaders bool) (io.Reader, error) {
 	if incrementReaders {
 		ff.h.cacheLock.Lock()
 		ff.readersCount++
@@ -98,9 +98,13 @@ func (ff *fsFile) Reader(incrementReaders bool) io.Reader {
 	}
 
 	if ff.isBig() {
-		return ff.bigFileReader()
+		r, err := ff.bigFileReader()
+		if err != nil && incrementReaders {
+			ff.decReadersCount()
+		}
+		return r, err
 	}
-	return ff.smallFileReader()
+	return ff.smallFileReader(), nil
 }
 
 func (ff *fsFile) smallFileReader() io.Reader {
@@ -126,7 +130,7 @@ func (ff *fsFile) isBig() bool {
 	return ff.contentLength > maxSmallFileSize && len(ff.dirIndex) == 0
 }
 
-func (ff *fsFile) bigFileReader() io.Reader {
+func (ff *fsFile) bigFileReader() (io.Reader, error) {
 	if ff.f == nil {
 		panic("BUG: ff.f must be non-nil in bigFileReader")
 	}
@@ -142,17 +146,17 @@ func (ff *fsFile) bigFileReader() io.Reader {
 	ff.bigFilesLock.Unlock()
 
 	if r != nil {
-		return r
+		return r, nil
 	}
 
 	f, err := os.Open(ff.f.Name())
 	if err != nil {
-		panic(fmt.Sprintf("BUG: cannot open already opened file %s: %s", ff.f.Name(), err))
+		return nil, fmt.Errorf("cannot open already opened file: %s", err)
 	}
 	return &bigFileReader{
 		f:  f,
 		ff: ff,
-	}
+	}, nil
 }
 
 func (ff *fsFile) Release() {
@@ -194,15 +198,12 @@ func (r *bigFileReader) WriteTo(w io.Writer) (int64, error) {
 	if rf, ok := w.(io.ReaderFrom); ok {
 		// This is a hack for triggering sendfile path in bufio.Writer:
 		// the buffer must be empty before calling ReadFrom.
-		var n int
 		if bw, ok := w.(*bufio.Writer); ok && bw.Buffered() > 0 {
-			n = bw.Buffered()
 			if err := bw.Flush(); err != nil {
 				return 0, err
 			}
 		}
-		nn, err := rf.ReadFrom(r.f)
-		return nn + int64(n), err
+		return rf.ReadFrom(r.f)
 	}
 
 	// slow path
@@ -235,10 +236,11 @@ type fsSmallFileReader struct {
 }
 
 func (r *fsSmallFileReader) Close() error {
-	r.ff.decReadersCount()
+	ff := r.ff
+	ff.decReadersCount()
 	r.ff = nil
 	r.offset = 0
-	r.ff.h.smallFileReaderPool.Put(r.v)
+	ff.h.smallFileReaderPool.Put(r.v)
 	return nil
 }
 
@@ -387,7 +389,14 @@ func (h *fsHandler) handleRequest(ctx *RequestCtx) {
 		}
 	}
 
-	ctx.SetBodyStream(ff.Reader(incrementReaders), ff.contentLength)
+	r, err := ff.Reader(incrementReaders)
+	if err != nil {
+		ctx.Logger().Printf("cannot obtain file reader for path=%q: %s", path, err)
+		ctx.Error("Internal Server Error", StatusInternalServerError)
+		return
+	}
+
+	ctx.SetBodyStream(r, ff.contentLength)
 	ctx.SetContentType(ff.contentType)
 }
 
