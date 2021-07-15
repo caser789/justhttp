@@ -362,6 +362,7 @@ func (s *Server) serveConn(c net.Conn) error {
 	var err error
 	var connectionClose bool
 	var errMsg string
+	var hijackHandler HijackHandler
 	for {
 		ctx.id++
 		connRequestNum++
@@ -420,6 +421,9 @@ func (s *Server) serveConn(c net.Conn) error {
 		ctx.Response.Reset()
 		s.Handler(ctx)
 
+		hijackHandler = ctx.hijackHandler
+		ctx.hijackHandler = nil
+
 		// Remove temporary files, which may be uploaded during the request.
 		ctx.Request.RemoveMultipartFormFiles()
 
@@ -473,8 +477,7 @@ func (s *Server) serveConn(c net.Conn) error {
 			}
 		}
 
-		if ctx.hijackHandler != nil {
-			h := ctx.hijackHandler
+		if hijackHandler != nil {
 			var hjr io.Reader
 			hjr = c
 			if br != nil {
@@ -494,7 +497,8 @@ func (s *Server) serveConn(c net.Conn) error {
 			}
 			c.SetReadDeadline(zeroTime)
 			c.SetWriteDeadline(zeroTime)
-			go hijackConnHandler(hjr, c, s, h)
+			go hijackConnHandler(hjr, c, s, hijackHandler)
+			hijackHandler = nil
 			err = errHijacked
 			break
 		}
