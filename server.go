@@ -476,9 +476,10 @@ func (s *Server) serveConn(c net.Conn) error {
 		connectionClose = ctx.Response.Header.ConnectionClose() || ctx.Request.Header.ConnectionClose()
 		if connectionClose {
 			ctx.Response.Header.SetCanonical(strConnection, strClose)
-		}
-		if !connectionClose && !ctx.Request.Header.IsHTTP11() {
+		} else if !ctx.Request.Header.IsHTTP11() {
 			// set 'Connection: keep-alive' response header for non-HTTP/1.1 request.
+			// There is no need in setting this header for http/1.1, since in http/1.1
+			// connections are keep-alive by default.
 			ctx.Response.Header.SetCanonical(strConnection, strKeepAlive)
 		}
 		if bw == nil {
@@ -693,6 +694,13 @@ type RequestCtx struct {
 
 var zeroTCPAddr = &net.TCPAddr{
 	IP: net.IPv4zero,
+}
+
+// NotFound resets response and sets '404 Not Found' response status code.
+func (ctx *RequestCtx) NotFound() {
+	ctx.Response.Reset()
+	ctx.SetStatusCode(StatusNotFound)
+	ctx.SetBodyString("404 Page not found")
 }
 
 // SendFile sends local file contents from given path as response body.
