@@ -11,6 +11,19 @@ import (
 	"sync"
 )
 
+// SetBodyStreamWriter registers the given sw for populating response body.
+//
+// This function may be used in the following cases:
+//
+//     * if response body is too big (more than 10MB).
+//     * if response body is streamed from slow external sources.
+//     * if response body must be streamed to the client in chunks
+//     (aka `http server push`).
+func (resp *Response) SetBodyStreamWriter(sw StreamWriter) {
+	sr := NewStreamReader(sw)
+	resp.SetBodyStream(sr, -1)
+}
+
 // Request represents HTTP request.
 //
 // It is forbidden copying Request instances. Create new instances

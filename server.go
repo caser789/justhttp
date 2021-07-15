@@ -1354,3 +1354,18 @@ func (c hijackConn) Close() error {
 	// hijacked conn is closed in hijackConnHandler.
 	return nil
 }
+
+// SetBodyStreamWriter registers the given stream writer for populating
+// response body.
+//
+// Access to RequestCtx and/or its' members is forbidden from sw.
+//
+// This function may be used in the following cases:
+//
+//     * if response body is too big (more than 10MB).
+//     * if response body is streamed from slow external sources.
+//     * if response body must be streamed to the client in chunks.
+//     (aka `http server push`).
+func (ctx *RequestCtx) SetBodyStreamWriter(sw StreamWriter) {
+	ctx.Response.SetBodyStreamWriter(sw)
+}
