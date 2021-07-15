@@ -2,9 +2,11 @@ package fasthttp
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"math"
+	"net"
 	"sync"
 	"time"
 	"unsafe"
@@ -18,10 +20,94 @@ var gmtLocation = func() *time.Location {
 	return x
 }()
 
+// AppendIPv4 appends string representation of the given ip v4 to dst
+// and returns the result (which may be newly allocated).
+func AppendIPv4(dst []byte, ip net.IP) []byte {
+	ip = ip.To4()
+	if ip == nil {
+		return append(dst, "non-v4 ip passed to AppendIPv4"...)
+	}
+
+	dst = AppendUint(dst, int(ip[0]))
+	for i := 1; i < 4; i++ {
+		dst = append(dst, '.')
+		dst = AppendUint(dst, int(ip[i]))
+	}
+	return dst
+}
+
+// ParseIPv4 parses ip address from ipStr into dst and returns dst
+// (which may be newly allocated).
+func ParseIPv4(dst net.IP, ipStr []byte) (net.IP, error) {
+	if len(dst) < net.IPv4len {
+		dst = make([]byte, net.IPv4len)
+	}
+	copy(dst, net.IPv4zero)
+	dst = dst.To4()
+	if dst == nil {
+		panic("BUG: dst must not be nil")
+	}
+
+	b := ipStr
+	for i := 0; i < 3; i++ {
+		n := bytes.IndexByte(b, '.')
+		if n < 0 {
+			return dst, fmt.Errorf("cannot find dot in ipStr %q", ipStr)
+		}
+		v, err := ParseUint(b[:n])
+		if err != nil {
+			return dst, fmt.Errorf("cannot parse ipStr %q: %s", ipStr, err)
+		}
+		if v > 255 {
+			return dst, fmt.Errorf("cannot parse ipStr %q: ip part cannot exceed 255: parsed %d", ipStr, v)
+		}
+		dst[i] = byte(v)
+		b = b[n+1:]
+	}
+	v, err := ParseUint(b)
+	if err != nil {
+		return dst, fmt.Errorf("cannot parse ipStr %q: %s", ipStr, err)
+	}
+	if v > 255 {
+		return dst, fmt.Errorf("cannot parse ipStr %q: ip part cannot exceed 255: parsed %d", ipStr, v)
+	}
+	dst[3] = byte(v)
+
+	return dst, nil
+}
+
 // AppendHTTPDate appends HTTP-compliant (RFC1123) representation of date
 // to dst and returns dst (which may be newly allocated).
 func AppendHTTPDate(dst []byte, date time.Time) []byte {
 	return date.In(gmtLocation).AppendFormat(dst, time.RFC1123)
+}
+
+// ParseHTTPDate parses HTTP-compliant (RFC1123) date.
+func ParseHTTPDate(date []byte) (time.Time, error) {
+	return time.Parse(time.RFC1123, unsafeBytesToStr(date))
+}
+
+// AppendUint appends n to dst and returns dst (which may be newly allocated).
+func AppendUint(dst []byte, n int) []byte {
+	if n < 0 {
+		panic("BUG: int must be positive")
+	}
+
+	var b [20]byte
+	buf := b[:]
+	i := len(buf)
+	var q int
+	for n >= 10 {
+		i--
+		q = n / 10
+		buf[i] = '0' + byte(n-q*10)
+		n = q
+	}
+	i--
+	buf[i] = '0' + byte(n)
+
+	dst = append(dst, buf[i:]...)
+	return dst
 }
 
 // ParseUint parses uint from buf.
@@ -133,37 +219,7 @@ func readHexInt(r *bufio.Reader) (int, error) {
 	}
 }
 
-const toLower = 'a' - 'A'
-
 var hexIntBufPool sync.Pool
-
-func uppercaseByte(p *byte) {
-	c := *p
-	if c >= 'a' && c <= 'z' {
-		*p = c - toLower
-	}
-}
-
-func lowercaseByte(p *byte) {
-	c := *p
-	if c >= 'A' && c <= 'Z' {
-		*p = c + toLower
-	}
-}
-
-func lowercaseBytes(b []byte) {
-	for i, n := 0, len(b); i < n; i++ {
-		lowercaseByte(&b[i])
-	}
-}
-
-// unsafeBytesToStr converts byte slice to a string without memory allocation.
-//
-// Note it may break if string and/or slice header will change
-// in the future go versions.
-func unsafeBytesToStr(b []byte) string {
-	return *(*string)(unsafe.Pointer(&b))
-}
 
 func writeHexInt(w *bufio.Writer, n int) error {
 	if n < 0 {
@@ -196,6 +252,13 @@ func int2hexbyte(n int) byte {
 	return 'a' + byte(n) - 10
 }
 
+func hexCharUpper(c byte) byte {
+	if c < 10 {
+		return '0' + c
+	}
+	return c - 10 + 'A'
+}
+
 var hex2intTable = func() []byte {
 	b := make([]byte, 255)
 	for i := byte(0); i < 255; i++ {
@@ -216,27 +279,35 @@ func hexbyte2int(c byte) int {
 	return int(hex2intTable[c]) - 1
 }
 
-// AppendUint appends n to dst and returns dst (which may be newly allocated).
-func AppendUint(dst []byte, n int) []byte {
-	if n < 0 {
-		panic("BUG: int must be positive")
-	}
+const toLower = 'a' - 'A'
 
-	var b [20]byte
-	buf := b[:]
-	i := len(buf)
-	var q int
-	for n >= 10 {
-		i--
-		q = n / 10
-		buf[i] = '0' + byte(n-q*10)
-		n = q
+func uppercaseByte(p *byte) {
+	c := *p
+	if c >= 'a' && c <= 'z' {
+		*p = c - toLower
 	}
-	i--
-	buf[i] = '0' + byte(n)
+}
 
-	dst = append(dst, buf[i:]...)
-	return dst
+func lowercaseByte(p *byte) {
+	c := *p
+	if c >= 'A' && c <= 'Z' {
+		*p = c + toLower
+	}
+}
+
+func lowercaseBytes(b []byte) {
+	for i, n := 0, len(b); i < n; i++ {
+		lowercaseByte(&b[i])
+	}
+}
+
+// unsafeBytesToStr converts byte slice to a string without memory allocation.
+// See https://groups.google.com/forum/#!msg/Golang-Nuts/ENgbUzYvCuU/90yGx7GUAgAJ .
+//
+// Note it may break if string and/or slice header will change
+// in the future go versions.
+func unsafeBytesToStr(b []byte) string {
+	return *(*string)(unsafe.Pointer(&b))
 }
 
 func appendQuotedArg(dst, v []byte) []byte {
@@ -250,13 +321,6 @@ func appendQuotedArg(dst, v []byte) []byte {
 	return dst
 }
 
-func hexCharUpper(c byte) byte {
-	if c < 10 {
-		return '0' + c
-	}
-	return c - 10 + 'A'
-}
-
 // EqualBytesStr returns true if string(b) == s.
 //
 // This function has no performance benefits comparing to string(b) == s.
@@ -268,13 +332,8 @@ func EqualBytesStr(b []byte, s string) bool {
 // AppendBytesStr appends src to dst and returns dst
 // (which may be newly allocated).
 //
-// This function has no performance benefits compared to append(dst, src..).
-// It's left here for backwards compatibility only.
+// This function has no performance benefits comparing to append(dst, src...).
+// It is left here for backwards compatibility only.
 func AppendBytesStr(dst []byte, src string) []byte {
 	return append(dst, src...)
-}
-
-// ParseHTTPDate parses HTTP-compliant (RFC1123) date.
-func ParseHTTPDate(date []byte) (time.Time, error) {
-	return time.Parse(time.RFC1123, unsafeBytesToStr(date))
 }
