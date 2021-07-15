@@ -18,6 +18,8 @@ var (
 )
 
 // Cookie represents HTTP response cookie.
+//
+// Do not copy Cookie object. Create a new one and use CopyTo instead.
 type Cookie struct {
 	key    []byte
 	value  []byte
@@ -27,6 +29,15 @@ type Cookie struct {
 
 	bufKV argsKV
 	buf   []byte
+}
+
+func (c *Cookie) CopyTo(src *Cookie) {
+	c.Reset()
+	c.key = append(c.key[:0], src.key...)
+	c.value = append(c.value[:0], src.value...)
+	c.expire = src.expire
+	c.domain = append(c.domain[:0], src.domain...)
+	c.path = append(c.path[:0], src.path...)
 }
 
 // Path returns cookie path.
