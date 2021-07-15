@@ -437,7 +437,7 @@ func (s *Server) serveConn(c net.Conn) error {
 		hijackHandler = ctx.hijackHandler
 		ctx.hijackHandler = nil
 
-		ctx.resetUserValues()
+		ctx.userValues.Reset()
 
 		// Remove temporary files, which may be uploaded during the request.
 		ctx.Request.RemoveMultipartFormFiles()
@@ -667,7 +667,7 @@ type RequestCtx struct {
 	// Outgoing response.
 	Response Response
 
-	userValues map[string]interface{}
+	userValues userData
 
 	id uint64
 
@@ -936,10 +936,11 @@ func (ctx *RequestCtx) Referer() []byte {
 //
 // All the values stored in ctx are deleted after returning from RequestHandler.
 func (ctx *RequestCtx) SetUserValue(key string, value interface{}) {
-	if ctx.userValues == nil {
-		ctx.userValues = make(map[string]interface{}, 1)
-	}
-	ctx.userValues[key] = value
+	ctx.userValues.Set(key, value)
+}
+
+func (ctx *RequestCtx) SetUserValueBytes(key []byte, value interface{}) {
+	ctx.userValues.SetBytes(key, value)
 }
 
 // UserAgent returns User-Agent header value from the request.
@@ -949,16 +950,11 @@ func (ctx *RequestCtx) UserAgent() []byte {
 
 // UserValue returns the value stored via SetUserValue under the given key.
 func (ctx *RequestCtx) UserValue(key string) interface{} {
-	if ctx.userValues == nil {
-		return nil
-	}
-	return ctx.userValues[key]
+	return ctx.userValues.Get(key)
 }
 
-func (ctx *RequestCtx) resetUserValues() {
-	for k := range ctx.userValues {
-		delete(ctx.userValues, k)
-	}
+func (ctx *RequestCtx) UserValueBytes(key []byte) interface{} {
+	return ctx.userValues.GetBytes(key)
 }
 
 // SetStatusCode sets response status code.
