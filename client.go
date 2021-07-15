@@ -939,6 +939,8 @@ func (c *HostClient) defaultDialFunc(addr string) (net.Conn, error) {
 }
 
 func (c *HostClient) getTCPAddr(addr string) (*net.TCPAddr, error) {
+	addr = addMissingPort(addr, c.IsTLS)
+
 	c.tcpAddrsLock.Lock()
 	tcpAddrs := c.tcpAddrs
 	if tcpAddrs != nil && !c.tcpAddrsPending && time.Since(c.tcpAddrsResolveTime) > dnsCacheDuration {
