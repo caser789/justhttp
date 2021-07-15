@@ -179,6 +179,11 @@ func (req *Request) parsePostArgs() {
 	return
 }
 
+// ResetBody resets request body.
+func (req *Request) ResetBody() {
+	req.body = req.body[:0]
+}
+
 // Reset clears request contents.
 func (req *Request) Reset() {
 	req.Header.Reset()
@@ -515,6 +520,11 @@ func (resp *Response) CopyTo(dst *Response) {
 	resp.Header.CopyTo(&dst.Header)
 	dst.body = append(dst.body[:0], resp.body...)
 	dst.SkipBody = resp.SkipBody
+}
+
+// ResetBody resets response body.
+func (resp *Response) ResetBody() {
+	resp.body = resp.body[:0]
 }
 
 // Reset clears response contents.

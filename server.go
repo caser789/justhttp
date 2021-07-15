@@ -676,6 +676,11 @@ func (ctx *RequestCtx) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// ResetBody resets response body contents.
+func (ctx *RequestCtx) ResetBody() {
+	ctx.Response.ResetBody()
+}
+
 // RequestURI returns RequestURI.
 //
 // This uri is valid until returning from RequestHandler.
