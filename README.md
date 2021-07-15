@@ -21,6 +21,8 @@ https://godoc.org/github.com/caser789/justhttp
 - [ ] WebSockets
 - [ ] HTTP/2.0
 - [ ] Uploaded files' parsing support
+- [ ] Middleware friendly
+    - [x] a {k: v} store inside RequestCtx
 
 # Performance optimization tips for multi-core systems.
 
