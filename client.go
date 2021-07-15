@@ -817,7 +817,7 @@ func (c *HostClient) connsCleaner() {
 		if mustStop {
 			break
 		}
-		time.Sleep(time.Second)
+		time.Sleep(10 * time.Second)
 	}
 }
 

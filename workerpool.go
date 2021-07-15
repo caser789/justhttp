@@ -63,7 +63,7 @@ func (wp *workerPool) Start() {
 			case <-stopCh:
 				return
 			default:
-				time.Sleep(time.Second)
+				time.Sleep(10 * time.Second)
 			}
 			wp.clean()
 		}
