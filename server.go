@@ -713,7 +713,7 @@ func (ctx *RequestCtx) SendFile(path string) error {
 
 // Write writes p into response body.
 func (ctx *RequestCtx) Write(p []byte) (int, error) {
-	ctx.Response.body = append(ctx.Response.body, p...)
+	ctx.Response.AppendBody(p)
 	return len(p), nil
 }
 
@@ -817,11 +817,15 @@ func (ctx *RequestCtx) RemoteIP() net.IP {
 // Error sets response status code to the given value and sets response body
 // to the given message.
 func (ctx *RequestCtx) Error(msg string, statusCode int) {
-	resp := &ctx.Response
-	resp.Reset()
-	resp.SetStatusCode(statusCode)
-	resp.Header.SetContentTypeBytes(defaultContentType)
-	resp.body = AppendBytesStr(resp.body[:0], msg)
+	ctx.Response.Reset()
+	ctx.SetStatusCode(statusCode)
+	ctx.SetContentTypeBytes(defaultContentType)
+	ctx.SetBodyString(msg)
+}
+
+// SetBodyString sets response body to the given value.
+func (ctx *RequestCtx) SetBodyString(body string) {
+	ctx.Response.SetBodyString(body)
 }
 
 // Init prepares ctx for passing to RequestHandler.

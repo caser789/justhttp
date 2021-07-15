@@ -8,6 +8,7 @@ https://godoc.org/github.com/caser789/justhttp
 - [x] handle Connection: close
 - [ ] shadow to handle timeout
 - [x] http client
+    - [ ] SessionClient with referer and cookies support
 - [x] Request cookie
 - [x] Limit max connection from the same IP
     - [x] connection pool
