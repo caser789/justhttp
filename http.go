@@ -501,6 +501,7 @@ func (resp *Response) SetBodyStream(bodyStream io.Reader, bodySize int) {
 
 // SetBody sets response body.
 func (resp *Response) SetBody(body []byte) {
+	resp.bodyStream = nil
 	resp.body = append(resp.body[:0], body...)
 }
 
@@ -524,6 +525,7 @@ func (resp *Response) CopyTo(dst *Response) {
 
 // ResetBody resets response body.
 func (resp *Response) ResetBody() {
+	resp.bodyStream = nil
 	resp.body = resp.body[:0]
 }
 
