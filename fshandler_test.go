@@ -107,7 +107,22 @@ func fsHandlerTest(t *testing.T, requestHandler RequestHandler, filenames []stri
 			break
 		}
 	}
+
+	// verify index page generation
+	ctx.URI().Update("/")
+	requestHandler(&ctx)
+	if ctx.Response.bodyStream == nil {
+		t.Fatalf("response body stream must be non-empty")
+	}
+	body, err := ioutil.ReadAll(ctx.Response.bodyStream)
+	if err != nil {
+		t.Fatalf("error when reading response body stream: %s", err)
+	}
+	if len(body) == 0 {
+		t.Fatalf("index page must be non-empty")
+	}
 }
+
 func TestStripPathSlashes(t *testing.T) {
 	testStripPathSlashes(t, "", 0, "")
 	testStripPathSlashes(t, "", 10, "")
@@ -128,7 +143,8 @@ func TestStripPathSlashes(t *testing.T) {
 }
 
 func testStripPathSlashes(t *testing.T, path string, stripSlashes int, expectedPath string) {
-	s := stripPathSlashes([]byte(path), stripSlashes)
+	s := stripLeadingSlashes([]byte(path), stripSlashes)
+	s = stripTrailingSlashes(s)
 	if string(s) != expectedPath {
 		t.Fatalf("unexpected path after stripping %q with stripSlashes=%d: %q. Expecting %q", path, stripSlashes, s, expectedPath)
 	}
