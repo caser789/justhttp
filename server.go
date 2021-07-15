@@ -479,6 +479,10 @@ func (s *Server) serveConn(c net.Conn) error {
 			break
 		}
 		connectionClose = ctx.Response.Header.ConnectionClose() || ctx.Request.Header.ConnectionClose()
+		if !connectionClose && !ctx.Request.Header.IsHTTP11() {
+			// set 'Connection: keep-alive' response headr for non-HTTP/1.1 request.
+			ctx.Response.Header.SetCanonical(strConnection, strKeepAlive)
+		}
 
 		if br == nil || connectionClose {
 			err = bw.Flush()
