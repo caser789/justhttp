@@ -890,6 +890,11 @@ func (ctx *RequestCtx) SetUserValue(key string, value interface{}) {
 	ctx.userValues[key] = value
 }
 
+// UserAgent returns User-Agent header value from the request.
+func (ctx *RequestCtx) UserAgent() []byte {
+	return ctx.Request.Header.UserAgent()
+}
+
 // UserValue returns the value stored via SetUserValue under the given key.
 func (ctx *RequestCtx) UserValue(key string) interface{} {
 	if ctx.userValues == nil {
