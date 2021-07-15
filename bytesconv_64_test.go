@@ -1,4 +1,4 @@
-// +build amd64
+// +build amd64 arm64 ppc64
 
 package fasthttp
 
@@ -17,6 +17,10 @@ func TestAppendUint(t *testing.T) {
 	testAppendUint(t, 0)
 	testAppendUint(t, 123)
 	testAppendUint(t, 0x7fffffffffffffff)
+
+	for i := 0; i < 2345; i++ {
+		testAppendUint(t, i)
+	}
 }
 
 func TestReadHexIntSuccess(t *testing.T) {
