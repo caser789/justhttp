@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"os"
 	"sync"
 )
 
@@ -66,6 +67,30 @@ func (req *Request) SetRequestURI(requestURI string) {
 // SetRequestURIBytes sets RequestURI.
 func (req *Request) SetRequestURIBytes(requestURI []byte) {
 	req.Header.SetRequestURIBytes(requestURI)
+}
+
+// SendFile registers file on the given path to be used as response body
+// when Write is called.
+//
+// Note that SendFile doesn't set Content-Type, so set it yourself
+// with Header.SetContentType.
+func (resp *Response) SendFile(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	statInfo, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return err
+	}
+	size64 := statInfo.Size()
+	size := int(size64)
+	if int64(size) != size64 {
+		size = -1
+	}
+	resp.SetBodyStream(f, size)
+	return nil
 }
 
 // StatusCode returns response status code.
