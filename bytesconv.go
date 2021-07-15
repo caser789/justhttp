@@ -273,3 +273,8 @@ func EqualBytesStr(b []byte, s string) bool {
 func AppendBytesStr(dst []byte, src string) []byte {
 	return append(dst, src...)
 }
+
+// ParseHTTPDate parses HTTP-compliant (RFC1123) date.
+func ParseHTTPDate(date []byte) (time.Time, error) {
+	return time.Parse(time.RFC1123, unsafeBytesToStr(date))
+}

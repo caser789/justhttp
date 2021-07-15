@@ -58,6 +58,12 @@ func (h *ResponseHeader) StatusCode() int {
 	return h.statusCode
 }
 
+// SetLastModified sets 'Last-Modified' header to the given value
+func (h *ResponseHeader) SetLastModified(t time.Time) {
+	h.bufKV.value = AppendHTTPDate(h.bufKV.value[:0], t)
+	h.SetCanonical(strLastModified, h.bufKV.value)
+}
+
 // SetStatusCode sets response status code.
 func (h *ResponseHeader) SetStatusCode(statusCode int) {
 	h.statusCode = statusCode
