@@ -1361,7 +1361,7 @@ func (ctx *RequestCtx) redirect(uri []byte, statusCode int) {
 }
 
 func getRedirectStatusCode(statusCode int) int {
-	if statusCode == StatusMovedPermanently || statusCode == StatusFound || statusCode == StatusSeeOther {
+	if statusCode == StatusMovedPermanently || statusCode == StatusFound || statusCode == StatusSeeOther || statusCode == StatusTemporaryRedirect {
 		return statusCode
 	}
 	return StatusFound
