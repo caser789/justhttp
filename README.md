@@ -3,30 +3,32 @@
 Fast HTTP library for Go
 
 https://godoc.org/github.com/caser789/justhttp
-- [x] connection pool
-    - [ ] server worker pool
-- [x] handle Connection: close
-- [ ] shadow to handle timeout
 - [x] http client
     - [ ] SessionClient with referer and cookies support
 - [x] Request cookie
 - [x] Limit max connection from the same IP
     - [x] connection pool
-- [ ] Example tests.
 - [ ] Load balancing client for multiple upstream hosts.
 - [ ] Client with requests' pipelining support.
 - [x] Reuse-port listner
 - [x] Trade memory usage with CPU usage for too much keep-alive connections.
-- [x] hijack request
 - [ ] Connection: Upgrade
 - [ ] WebSockets
 - [ ] HTTP/2.0
 - [ ] Uploaded files' parsing support
-- [ ] Middleware friendly
-    - [x] a {k: v} store inside RequestCtx
-- [ ] Handle static files
-    - [x] Handle large file
-- [ ] Use sendfile syscall
+
+- Features
+    - [ ] Handle static files
+        - [x] Handle large file
+    - [ ] Middleware friendly
+        - [x] a {k: v} store inside RequestCtx
+    - [x] hijack request
+    - [x] handle Connection: close
+    - [ ] shadow to handle timeout
+- Performance
+    - [ ] Use sendfile syscall
+    - [x] connection pool
+        - [ ] server worker pool
 
 # Performance optimization tips for multi-core systems.
 
