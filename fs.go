@@ -2,10 +2,12 @@ package fasthttp
 
 import (
 	"bytes"
+	"compress/gzip"
 	"errors"
 	"fmt"
 	"html"
 	"io"
+	"io/ioutil"
 	"mime"
 	"net/http"
 	"os"
@@ -518,7 +520,8 @@ func (h *fsHandler) handleRequest(ctx *RequestCtx) {
 		var err error
 		ff, err = h.openFSFile(filePath, mustCompress)
 		if mustCompress && err == errNoCreatePermission {
-			ctx.Logger().Printf("insufficient permission for saving compressed file for")
+			ctx.Logger().Printf("insufficient permissions for saving compressed file for %q. Serving uncompressed file. "+
+				"Allow write access to the directory with this file in order to improve fasthttp performance", filePath)
 			mustCompress = false
 			ff, err = h.openFSFile(filePath, mustCompress)
 		}
@@ -745,7 +748,6 @@ func (h *fsHandler) compressFileNolock(f *os.File, fileInfo os.FileInfo, filePat
 		if !os.IsPermission(err) {
 			return nil, fmt.Errorf("cannot create temporary file %q: %s", tmpFilePath, err)
 		}
-
 		return nil, errNoCreatePermission
 	}
 
@@ -841,12 +843,11 @@ func (h *fsHandler) newFSFile(f *os.File, fileInfo os.FileInfo, compressed bool)
 	ext := fileExtension(fileInfo.Name(), compressed)
 	contentType := mime.TypeByExtension(ext)
 	if len(contentType) == 0 {
-		data := make([]byte, 512)
-		n, err := f.ReadAt(data, 0)
-		if err != nil && err != io.EOF {
+		data, err := readFileHeader(f, compressed)
+		if err != nil {
 			return nil, fmt.Errorf("cannot read header of the file %q: %s", f.Name(), err)
 		}
-		contentType = http.DetectContentType(data[:n])
+		contentType = http.DetectContentType(data)
 	}
 
 	lastModified := fileInfo.ModTime()
@@ -862,6 +863,31 @@ func (h *fsHandler) newFSFile(f *os.File, fileInfo os.FileInfo, compressed bool)
 		t: time.Now(),
 	}
 	return ff, nil
+}
+
+func readFileHeader(f *os.File, compressed bool) ([]byte, error) {
+	r := io.Reader(f)
+	var zr *gzip.Reader
+	if compressed {
+		var err error
+		if zr, err = acquireGzipReader(f); err != nil {
+			return nil, err
+		}
+		r = zr
+	}
+
+	lr := &io.LimitedReader{
+		R: r,
+		N: 512,
+	}
+	data, err := ioutil.ReadAll(lr)
+	f.Seek(0, 0)
+
+	if zr != nil {
+		releaseGzipReader(zr)
+	}
+
+	return data, err
 }
 
 func stripLeadingSlashes(path []byte, stripSlashes int) []byte {
