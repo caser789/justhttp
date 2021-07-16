@@ -26,6 +26,15 @@ type URI struct {
 	h *RequestHeader
 }
 
+func (x *URI) LastPathSegment() []byte{
+    path := x.Path()
+    n := bytes.LastIndexByte(path, '/')
+    if n < 0 {
+        return path
+    }
+    return path[n+1:]
+}
+
 // CopyTo copies uri contents to dst.
 func (x *URI) CopyTo(dst *URI) {
 	dst.Reset()
