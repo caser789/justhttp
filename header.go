@@ -235,8 +235,42 @@ func (h *RequestHeader) SetContentTypeBytes(contentType []byte) {
 	h.contentType = append(h.contentType[:0], contentType...)
 }
 
+// SetMultipartFormBoundary sets the following Content-Type:
+// 'multipart/form-data; boundary=...'
+// where ... is substituted by the given boundary.
+func (h *RequestHeader) SetMultipartFormBoundary(boundary string) {
+	h.parseRawHeaders()
+
+	b := h.bufKV.value
+	b = append(b, strMultipartFormData...)
+	b = append(b, ';', ' ')
+	b = append(b, strBoundary...)
+	b = append(b, '=')
+	b = append(b, boundary...)
+	h.bufKV.value = b
+
+	h.SetContentTypeBytes(h.bufKV.value)
+}
+
+// SetMultipartFormBoundaryBytes sets the following Content-Type:
+// 'multipart/form-data; boundary=...'
+// where ... is substituted by the given boundary.
+func (h *RequestHeader) SetMultipartFormBoundaryBytes(boundary []byte) {
+	h.parseRawHeaders()
+
+	b := h.bufKV.value
+	b = append(b, strMultipartFormData...)
+	b = append(b, ';', ' ')
+	b = append(b, strBoundary...)
+	b = append(b, '=')
+	b = append(b, boundary...)
+	h.bufKV.value = b
+
+	h.SetContentTypeBytes(h.bufKV.value)
+}
+
 // MultipartFormBoundary returns boundary part
-// from 'multipart/form-data; boundary=...'
+// from 'multipart/form-data; boundary=...' Content-Type.
 func (h *RequestHeader) MultipartFormBoundary() []byte {
 	b := h.ContentType()
 	if !bytes.HasPrefix(b, strMultipartFormData) {
@@ -381,6 +415,7 @@ func (h *RequestHeader) SetRequestURIBytes(requestURI []byte) {
 
 // IsGet returns true if request method is GET.
 func (h *RequestHeader) IsGet() bool {
+	// Optimize fast path for GET requests.
 	if !h.isGet {
 		h.isGet = bytes.Equal(h.Method(), strGet)
 	}
