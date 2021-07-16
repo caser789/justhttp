@@ -1051,7 +1051,9 @@ func (h *ResponseHeader) AppendBytes(dst []byte) []byte {
 	dst = appendHeaderLine(dst, strServer, server)
 	dst = appendHeaderLine(dst, strDate, serverDate.Load().([]byte))
 
-	dst = appendHeaderLine(dst, strContentType, h.ContentType())
+	if h.ContentLength() != 0 || len(h.contentType) > 0 {
+		dst = appendHeaderLine(dst, strContentType, h.ContentType())
+	}
 
 	if len(h.contentLengthBytes) > 0 {
 		dst = appendHeaderLine(dst, strContentLength, h.contentLengthBytes)
