@@ -10,6 +10,37 @@ import (
 	"testing"
 )
 
+func TestRequestReadGzippedBody(t *testing.T) {
+	var r Request
+
+	bodyOriginal := "foo bar baz compress me better!"
+	body := AppendGzipBytes(nil, []byte(bodyOriginal))
+	s := fmt.Sprintf("POST /foobar HTTP/1.1\r\nContent-Type: foo/bar\r\nContent-Encoding: gzip\r\nContent-Length: %d\r\n\r\n%s",
+		len(body), body)
+	br := bufio.NewReader(bytes.NewBufferString(s))
+	if err := r.Read(br); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	if string(r.Header.Peek("Content-Encoding")) != "gzip" {
+		t.Fatalf("unexpected content-encoding: %q. Expecting %q", r.Header.Peek("Content-Encoding"), "gzip")
+	}
+	if r.Header.ContentLength() != len(body) {
+		t.Fatalf("unexpected content-length: %d. Expecting %d", r.Header.ContentLength(), len(body))
+	}
+	if string(r.Body()) != string(body) {
+		t.Fatalf("unexpected body: %q. Expecting %q", r.Body(), body)
+	}
+
+	bodyGunzipped, err := AppendGunzipBytes(nil, r.Body())
+	if err != nil {
+		t.Fatalf("unexpected error when uncompressing data: %s", err)
+	}
+	if string(bodyGunzipped) != bodyOriginal {
+		t.Fatalf("unexpected uncompressed body %q. Expecting %q", bodyGunzipped, bodyOriginal)
+	}
+}
+
 func TestRequestReadPostNoBody(t *testing.T) {
 	var r Request
 
@@ -27,6 +58,9 @@ func TestRequestReadPostNoBody(t *testing.T) {
 	}
 	if len(r.Body()) != 0 {
 		t.Fatalf("unexpected body found %q. Expecting empty body", r.Body())
+	}
+	if r.Header.ContentLength() != 0 {
+		t.Fatalf("unexpected content-length: %d. Expecting 0", r.Header.ContentLength())
 	}
 
 	tail, err := ioutil.ReadAll(br)
@@ -210,6 +244,29 @@ func TestRequestMultipartForm(t *testing.T) {
 	}
 
 	formData := w.Bytes()
+	for i := 0; i < 5; i++ {
+		formData = testRequestMultipartForm(t, boundary, formData, 10)
+	}
+
+	// verify request unmarshalling / marshalling
+	s := "POST / HTTP/1.1\r\nHost: aaa\r\nContent-Type: multipart/form-data; boundary=foobar\r\nContent-Length: 213\r\n\r\n--foobar\r\nContent-Disposition: form-data; name=\"key_0\"\r\n\r\nvalue_0\r\n--foobar\r\nContent-Disposition: form-data; name=\"key_1\"\r\n\r\nvalue_1\r\n--foobar\r\nContent-Disposition: form-data; name=\"key_2\"\r\n\r\nvalue_2\r\n--foobar--\r\n"
+
+	var req Request
+	br := bufio.NewReader(bytes.NewBufferString(s))
+	if err := req.Read(br); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	s = req.String()
+	br = bufio.NewReader(bytes.NewBufferString(s))
+	if err := req.Read(br); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	testRequestMultipartForm(t, "foobar", req.Body(), 3)
+}
+
+func testRequestMultipartForm(t *testing.T, boundary string, formData []byte, partsCount int) []byte {
 	s := fmt.Sprintf("POST / HTTP/1.1\r\nHost: aaa\r\nContent-Type: multipart/form-data; boundary=%s\r\nContent-Length: %d\r\n\r\n%s",
 		boundary, len(formData), formData)
 
@@ -231,8 +288,8 @@ func TestRequestMultipartForm(t *testing.T) {
 		t.Fatalf("unexpected files found in the multipart form: %d", len(f.File))
 	}
 
-	if len(f.Value) != 10 {
-		t.Fatalf("unexpected number of values found: %d. Expecting %d", len(f.Value), 10)
+	if len(f.Value) != partsCount {
+		t.Fatalf("unexpected number of values found: %d. Expecting %d", len(f.Value), partsCount)
 	}
 
 	for k, vv := range f.Value {
@@ -250,6 +307,8 @@ func TestRequestMultipartForm(t *testing.T) {
 			t.Fatalf("key and value suffixes don't match: %q vs %q", k, v)
 		}
 	}
+
+	return req.Body()
 }
 
 func TestResponseReadLimitBody(t *testing.T) {
