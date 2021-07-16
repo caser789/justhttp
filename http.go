@@ -3,26 +3,16 @@ package fasthttp
 import (
 	"bufio"
 	"bytes"
+	"compress/flate"
+	"compress/gzip"
 	"errors"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"mime/multipart"
 	"os"
 	"sync"
 )
-
-// SetBodyStreamWriter registers the given sw for populating response body.
-//
-// This function may be used in the following cases:
-//
-//     * if response body is too big (more than 10MB).
-//     * if response body is streamed from slow external sources.
-//     * if response body must be streamed to the client in chunks
-//     (aka `http server push`).
-func (resp *Response) SetBodyStreamWriter(sw StreamWriter) {
-	sr := NewStreamReader(sw)
-	resp.SetBodyStream(sr, -1)
-}
 
 // Request represents HTTP request.
 //
@@ -82,32 +72,6 @@ func (req *Request) SetRequestURIBytes(requestURI []byte) {
 	req.Header.SetRequestURIBytes(requestURI)
 }
 
-// SendFile registers file on the given path to be used as response body
-// when Write is called.
-//
-// Note that SendFile doesn't set Content-Type, so set it yourself
-// with Header.SetContentType.
-func (resp *Response) SendFile(path string) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return err
-	}
-	fileInfo, err := f.Stat()
-	if err != nil {
-		f.Close()
-		return err
-	}
-	size64 := fileInfo.Size()
-	size := int(size64)
-	if int64(size) != size64 {
-		size = -1
-	}
-
-	resp.Header.SetLastModified(fileInfo.ModTime())
-	resp.SetBodyStream(f, size)
-	return nil
-}
-
 // StatusCode returns response status code.
 func (resp *Response) StatusCode() int {
 	return resp.Header.StatusCode()
@@ -138,6 +102,32 @@ func (req *Request) SetConnectionClose() {
 	req.Header.SetConnectionClose()
 }
 
+// SendFile registers file on the given path to be used as response body
+// when Write is called.
+//
+// Note that SendFile doesn't set Content-Type, so set it yourself
+// with Header.SetContentType.
+func (resp *Response) SendFile(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	fileInfo, err := f.Stat()
+	if err != nil {
+		f.Close()
+		return err
+	}
+	size64 := fileInfo.Size()
+	size := int(size64)
+	if int64(size) != size64 {
+		size = -1
+	}
+
+	resp.Header.SetLastModified(fileInfo.ModTime())
+	resp.SetBodyStream(f, size)
+	return nil
+}
+
 // SetBodyStream sets response body stream and, optionally body size.
 //
 // If bodySize is >= 0, then the bodyStream must provide exactly bodySize bytes
@@ -147,6 +137,8 @@ func (req *Request) SetConnectionClose() {
 //
 // bodyStream.Close() is called after finishing reading all body data
 // if it implements io.Closer.
+//
+// See also SetBodyStreamWriter.
 func (resp *Response) SetBodyStream(bodyStream io.Reader, bodySize int) {
 	resp.body = resp.body[:0]
 	resp.closeBodyStream()
@@ -154,7 +146,24 @@ func (resp *Response) SetBodyStream(bodyStream io.Reader, bodySize int) {
 	resp.Header.SetContentLength(bodySize)
 }
 
+// SetBodyStreamWriter registers the given sw for populating response body.
+//
+// This function may be used in the following cases:
+//
+//     * if response body is too big (more than 10MB).
+//     * if response body is streamed from slow external sources.
+//     * if response body must be streamed to the client in chunks
+//     (aka `http server push`).
+func (resp *Response) SetBodyStreamWriter(sw StreamWriter) {
+	sr := NewStreamReader(sw)
+	resp.SetBodyStream(sr, -1)
+}
+
 // BodyWriter returns writer for populating response body.
+//
+// If used inside RequestHandler, the returned writer must not be used
+// after returning from RequestHandler. Use RequestCtx.Write
+// or SetBodyStreamWriter in this case.
 func (resp *Response) BodyWriter() io.Writer {
 	resp.w.r = resp
 	return &resp.w
@@ -184,6 +193,50 @@ func (w *requestBodyWriter) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+// Body returns response body.
+func (resp *Response) Body() []byte {
+	return resp.body
+}
+
+// BodyGunzip returns un-gzipped body data.
+//
+// This method may be used if the response header contains
+// 'Content-Encoding: gzip' for reading un-gzipped response body.
+// Use Body for reading gzipped response body.
+func (resp *Response) BodyGunzip() ([]byte, error) {
+	// Do not care about memory allocations here,
+	// since gzip is slow and generates a lot of memory allocations
+	// by itself.
+	r, err := gzip.NewReader(bytes.NewBuffer(resp.body))
+	if err != nil {
+		return nil, err
+	}
+	defer r.Close()
+	b, err := ioutil.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
+// BodyInflate returns un-deflated body data.
+//
+// This method may be used if the response header contains
+// 'Content-Encoding: deflate' for reading un-deflated response body.
+// Use Body for reading deflated response body.
+func (resp *Response) BodyInflate() ([]byte, error) {
+	// Do not care about memory allocations here,
+	// since flate is slow and generates a lot of memory allocations
+	// by itself.
+	r := flate.NewReader(bytes.NewBuffer(resp.body))
+	defer r.Close()
+	b, err := ioutil.ReadAll(r)
+	if err != nil {
+		return nil, err
+	}
+	return b, nil
+}
+
 // AppendBody appends p to response body.
 func (resp *Response) AppendBody(p []byte) {
 	resp.closeBodyStream()
@@ -194,11 +247,6 @@ func (resp *Response) AppendBody(p []byte) {
 func (resp *Response) AppendBodyString(s string) {
 	resp.closeBodyStream()
 	resp.body = append(resp.body, s...)
-}
-
-// Body returns response body.
-func (resp *Response) Body() []byte {
-	return resp.body
 }
 
 // SetBody sets response body.
@@ -219,6 +267,11 @@ func (resp *Response) ResetBody() {
 	resp.body = resp.body[:0]
 }
 
+// Body returns request body.
+func (req *Request) Body() []byte {
+	return req.body
+}
+
 // AppendBody appends p to request body.
 func (req *Request) AppendBody(p []byte) {
 	req.body = append(req.body, p...)
@@ -229,18 +282,13 @@ func (req *Request) AppendBodyString(s string) {
 	req.body = append(req.body, s...)
 }
 
-// SetBodyString sets request body.
-func (req *Request) SetBodyString(body string) {
+// SetBody sets request body.
+func (req *Request) SetBody(body []byte) {
 	req.body = append(req.body[:0], body...)
 }
 
-// Body returns request body.
-func (req *Request) Body() []byte {
-	return req.body
-}
-
-// SetBody sets request body.
-func (req *Request) SetBody(body []byte) {
+// SetBodyString sets request body.
+func (req *Request) SetBodyString(body string) {
 	req.body = append(req.body[:0], body...)
 }
 
@@ -512,6 +560,102 @@ func (req *Request) Write(w *bufio.Writer) error {
 		return fmt.Errorf("Non-zero body for non-POST request. body=%q", req.body)
 	}
 	return err
+}
+
+// WriteGzip writes response with gzipped body to w.
+//
+// The method sets 'Content-Encoding: gzip' header.
+//
+// WriteGzip doesn't flush response to w for performance reasons.
+func (resp *Response) WriteGzip(w *bufio.Writer) error {
+	return resp.WriteGzipLevel(w, gzip.DefaultCompression)
+}
+
+// WriteGzipLevel writes response with gzipped body to w.
+//
+// Level is compression level. See available levels in encoding/gzip package.
+//
+// The method sets 'Content-Encoding: gzip' header.
+//
+// WriteGzipLevel doesn't flush response to w for performance reasons.
+func (resp *Response) WriteGzipLevel(w *bufio.Writer, level int) error {
+	// Do not care about memory allocations here, since gzip is slow
+	// and allocates a lot of memory by itself.
+	if resp.bodyStream != nil {
+		bs := resp.bodyStream
+		resp.bodyStream = NewStreamReader(func(sw *bufio.Writer) {
+			zw := newGzipWriter(sw, level)
+			defer zw.Close()
+			io.Copy(zw, bs)
+		})
+	} else {
+		var buf bytes.Buffer
+		zw := newGzipWriter(&buf, level)
+		if _, err := zw.Write(resp.body); err != nil {
+			return err
+		}
+		zw.Close()
+		resp.body = buf.Bytes()
+	}
+
+	resp.Header.SetCanonical(strContentEncoding, strGzip)
+	return resp.Write(w)
+}
+
+// WriteDeflate writes response with deflated body to w.
+//
+// The method sets 'Content-Encoding: deflate' header.
+//
+// WriteDeflate doesn't flush response to w for performance reasons.
+func (resp *Response) WriteDeflate(w *bufio.Writer) error {
+	return resp.WriteDeflateLevel(w, flate.DefaultCompression)
+}
+
+// WriteDeflateLevel writes response with deflated body to w.
+//
+// Level is compression level. See available levels in encoding/flate package.
+//
+// The method sets 'Content-Encoding: deflate' header.
+//
+// WriteDeflateLevel doesn't flush response to w for performance reasons.
+func (resp *Response) WriteDeflateLevel(w *bufio.Writer, level int) error {
+	// Do not care about memory allocations here, since flate is slow
+	// and allocates a lot of memory by itself.
+	if resp.bodyStream != nil {
+		bs := resp.bodyStream
+		resp.bodyStream = NewStreamReader(func(sw *bufio.Writer) {
+			zw := newDeflateWriter(sw, level)
+			defer zw.Close()
+			io.Copy(zw, bs)
+		})
+	} else {
+		var buf bytes.Buffer
+		zw := newDeflateWriter(&buf, level)
+		if _, err := zw.Write(resp.body); err != nil {
+			return err
+		}
+		zw.Close()
+		resp.body = buf.Bytes()
+	}
+
+	resp.Header.SetCanonical(strContentEncoding, strDeflate)
+	return resp.Write(w)
+}
+
+func newDeflateWriter(w io.Writer, level int) *flate.Writer {
+	zw, err := flate.NewWriter(w, level)
+	if err != nil {
+		panic(fmt.Sprintf("BUG: flate.NewWriter(%d) returns non-nil error: %s", level, err))
+	}
+	return zw
+}
+
+func newGzipWriter(w io.Writer, level int) *gzip.Writer {
+	zw, err := gzip.NewWriterLevel(w, level)
+	if err != nil {
+		panic(fmt.Sprintf("BUG: gzip.NewWriter(%d) returns non-nil error: %s", level, err))
+	}
+	return zw
 }
 
 // Write writes response to w.
