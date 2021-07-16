@@ -42,8 +42,6 @@ type perIPConn struct {
 
 	ip               uint32
 	perIPConnCounter *perIPConnCounter
-
-	v interface{}
 }
 
 func (c *perIPConn) Close() error {
@@ -93,12 +91,11 @@ func acquirePerIPConn(conn net.Conn, ip uint32, counter *perIPConnCounter) *perI
 	c.Conn = conn
 	c.ip = ip
 	c.perIPConnCounter = counter
-	c.v = v
 	return c
 }
 
 func releasePerIPConn(c *perIPConn) {
 	c.Conn = nil
 	c.perIPConnCounter = nil
-	perIPConnPool.Put(c.v)
+	perIPConnPool.Put(c)
 }
