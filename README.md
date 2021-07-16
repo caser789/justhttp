@@ -25,10 +25,12 @@ https://godoc.org/github.com/caser789/justhttp
     - [x] hijack request
     - [x] handle Connection: close
     - [ ] shadow to handle timeout
+    - [x] 100-continue
 - Performance
     - [ ] Use sendfile syscall
     - [x] connection pool
         - [ ] server worker pool
+    - [x] compress response
 
 # Performance optimization tips for multi-core systems.
 
