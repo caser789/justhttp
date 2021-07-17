@@ -28,14 +28,15 @@ type Request struct {
 
 	bodyStream io.Reader
 
-	uri       URI
-	parsedURI bool
-
-	postArgs       Args
-	parsedPostArgs bool
+	uri      URI
+	postArgs Args
 
 	multipartForm         *multipart.Form
 	multipartFormBoundary string
+
+	// Group bool members in order to reduce Request object size.
+	parsedURI      bool
+	parsedPostArgs bool
 }
 
 // Response represents HTTP response.
@@ -50,17 +51,17 @@ type Response struct {
 	// Copying Header by value is forbidden. Use pointer to Header instead.
 	Header ResponseHeader
 
+	body []byte
+	w    responseBodyWriter
+
+	bodyStream io.Reader
+
 	// Response.Read() skips reading body if set to true.
 	// Use it for reading HEAD responses.
 	//
 	// Response.Write() skips writing body if set to true.
 	// Use it for writing HEAD responses.
 	SkipBody bool
-
-	body []byte
-	w    responseBodyWriter
-
-	bodyStream io.Reader
 }
 
 // SetRequestURI sets RequestURI.
@@ -289,8 +290,8 @@ func gunzipData(p []byte) ([]byte, error) {
 // This method may be used if the response header contains
 // 'Content-Encoding: deflate' for reading inflated request body.
 // Use Body for reading deflated request body.
-func (resp *Request) BodyInflate() ([]byte, error) {
-	return inflateData(resp.Body())
+func (req *Request) BodyInflate() ([]byte, error) {
+	return inflateData(req.Body())
 }
 
 // BodyInflate returns inflated body data.
