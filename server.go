@@ -1081,6 +1081,9 @@ func acceptConn(s *Server, ln net.Listener, lastPerIPErrorTime *time.Time) (net.
 	for {
 		c, err := ln.Accept()
 		if err != nil {
+			if c != nil {
+				panic("BUG: net.Listener returned non-nil conn and non-nil error")
+			}
 			if netErr, ok := err.(net.Error); ok && netErr.Temporary() {
 				s.logger().Printf("Temporary error when accepting new connections: %s", netErr)
 				time.Sleep(time.Second)
