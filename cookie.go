@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"sync"
 	"time"
 )
 
@@ -13,13 +14,38 @@ var (
 	// CookieExpireDelete may be set on Cookie.Expire for expiring the given cookie.
 	CookieExpireDelete = time.Date(2009, time.November, 10, 23, 0, 0, 0, time.UTC)
 
-	// CookieExpireUnlimited indicated that the cookie doesn't expire.
+	// CookieExpireUnlimited indicates that the cookie doesn't expire.
 	CookieExpireUnlimited = zeroTime
 )
 
+// AcquireCookie returns an empty Cookie object from the pool.
+//
+// The returned object may be returned back to the pool with ReleaseCookie.
+// This allows reducing GC load.
+func AcquireCookie() *Cookie {
+	return cookiePool.Get().(*Cookie)
+}
+
+// ReleaseCookie returns the Cookie object acquired with AcquireCookie back
+// to the pool.
+//
+// Do not access released Cookie object, otherwise data races may occur.
+func ReleaseCookie(c *Cookie) {
+	c.Reset()
+	cookiePool.Put(c)
+}
+
+var cookiePool = &sync.Pool{
+	New: func() interface{} {
+		return &Cookie{}
+	},
+}
+
 // Cookie represents HTTP response cookie.
 //
-// Do not copy Cookie object. Create a new one and use CopyTo instead.
+// Do not copy Cookie objects. Create new object and use CopyTo instead.
+//
+// Cookie instance MUST NOT be used from concurrently running goroutines.
 type Cookie struct {
 	key    []byte
 	value  []byte
@@ -31,6 +57,7 @@ type Cookie struct {
 	buf   []byte
 }
 
+// CopyTo copies src cookie to c.
 func (c *Cookie) CopyTo(src *Cookie) {
 	c.Reset()
 	c.key = append(c.key[:0], src.key...)
@@ -129,27 +156,6 @@ func (c *Cookie) SetKeyBytes(key []byte) {
 	c.key = append(c.key[:0], key...)
 }
 
-// Cookie returns cookie representation.
-//
-// The returned value is valid until the next call to Cookie methods.
-func (c *Cookie) Cookie() []byte {
-	c.buf = c.AppendBytes(c.buf[:0])
-	return c.buf
-}
-
-// String returns cookie representation.
-func (c *Cookie) String() string {
-	return string(c.Cookie())
-}
-
-// WriteTo writes cookie representation to w.
-//
-// WriteTo implements io.WriteTo interface.
-func (c *Cookie) WriteTo(w io.Writer) (int64, error) {
-	n, err := w.Write(c.Cookie())
-	return int64(n), err
-}
-
 // Reset clears the cookie.
 func (c *Cookie) Reset() {
 	c.key = c.key[:0]
@@ -159,8 +165,8 @@ func (c *Cookie) Reset() {
 	c.path = c.path[:0]
 }
 
-// AppendBytes appends cookie representation to dst and returns dst
-// (maybe newly allocated).
+// AppendBytes appends cookie representation to dst and returns
+// the extended dst.
 func (c *Cookie) AppendBytes(dst []byte) []byte {
 	if len(c.key) > 0 {
 		dst = AppendQuotedArg(dst, c.key)
@@ -184,6 +190,27 @@ func (c *Cookie) AppendBytes(dst []byte) []byte {
 	return dst
 }
 
+// Cookie returns cookie representation.
+//
+// The returned value is valid until the next call to Cookie methods.
+func (c *Cookie) Cookie() []byte {
+	c.buf = c.AppendBytes(c.buf[:0])
+	return c.buf
+}
+
+// String returns cookie representation.
+func (c *Cookie) String() string {
+	return string(c.Cookie())
+}
+
+// WriteTo writes cookie representation to w.
+//
+// WriteTo implements io.WriterTo interface.
+func (c *Cookie) WriteTo(w io.Writer) (int64, error) {
+	n, err := w.Write(c.Cookie())
+	return int64(n), err
+}
+
 var errNoCookies = errors.New("no cookies found")
 
 // Parse parses Set-Cookie header.
@@ -192,7 +219,7 @@ func (c *Cookie) Parse(src string) error {
 	return c.ParseBytes(c.buf)
 }
 
-// ParseBytes parses Set-Cookie header
+// ParseBytes parses Set-Cookie header.
 func (c *Cookie) ParseBytes(src []byte) error {
 	c.Reset()
 
