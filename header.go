@@ -146,12 +146,9 @@ func (h *RequestHeader) ConnectionClose() bool {
 	return h.connectionClose
 }
 
-// ConnectionCloseFast returns true if 'Connection: close' header is set.
-//
-// This method triggers full (slow) request headers' parsing
-// unlike ConnectionClose, so use it only if you really want determining
-// whether 'Connection: close' header is really set on the wire.
-func (h *RequestHeader) ConnectionCloseFast() bool {
+func (h *RequestHeader) connectionCloseFast() bool {
+	// h.parseRawHeaders() isn't called for performance reasons.
+	// Use ConnectionClose for triggering raw headers parsing.
 	return h.connectionClose
 }
 
@@ -506,6 +503,10 @@ func (h *RequestHeader) IsPut() bool {
 
 // IsHead returns true if request method is HEAD.
 func (h *RequestHeader) IsHead() bool {
+	// Fast path
+	if h.isGet {
+		return false
+	}
 	return bytes.Equal(h.Method(), strHead)
 }
 
