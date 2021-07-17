@@ -15,10 +15,9 @@ import (
 // Request represents HTTP request.
 //
 // It is forbidden copying Request instances. Create new instances
-// and use CopyTo() instead.
+// and use CopyTo instead.
 //
-// It is unsafe modifying/reading Request instance from concurrently
-// running goroutines.
+// Request instance MUST NOT be used from concurrently running goroutines.
 type Request struct {
 	// Request header
 	//
@@ -43,10 +42,9 @@ type Request struct {
 // Response represents HTTP response.
 //
 // It is forbidden copying Response instances. Create new instances
-// and use CopyTo() instead.
+// and use CopyTo instead.
 //
-// It is unsafe modifying/reading Response instance from concurrently
-// running goroutines.
+// Response instance MUST NOT be used from concurrently running goroutines.
 type Response struct {
 	// Response header
 	//
@@ -253,24 +251,29 @@ func (resp *Response) Body() []byte {
 
 // BodyGunzip returns un-gzipped body data.
 //
+// This method may be used if the request header contains
+// 'Content-Encoding: gzip' for reading un-gzipped body.
+// Use Body for reading gzipped request body.
+func (req *Request) BodyGunzip() ([]byte, error) {
+	return gunzipData(req.Body())
+}
+
+// BodyGunzip returns un-gzipped body data.
+//
 // This method may be used if the response header contains
-// 'Content-Encoding: gzip' for reading un-gzipped response body.
+// 'Content-Encoding: gzip' for reading un-gzipped body.
 // Use Body for reading gzipped response body.
 func (resp *Response) BodyGunzip() ([]byte, error) {
-	// Do not care about memory allocations here,
-	// since gzip is slow and generates a lot of memory allocations
-	// by itself.
-	r := bytes.NewBuffer(resp.body)
-	zr, err := acquireGzipReader(r)
+	return gunzipData(resp.Body())
+}
+
+func gunzipData(p []byte) ([]byte, error) {
+	var bb ByteBuffer
+	_, err := WriteGunzip(&bb, p)
 	if err != nil {
 		return nil, err
 	}
-	b, err := ioutil.ReadAll(zr)
-	releaseGzipReader(zr)
-	if err != nil {
-		return nil, err
-	}
-	return b, nil
+	return bb.B, nil
 }
 
 // BodyInflate returns un-deflated body data.
@@ -321,6 +324,8 @@ func (resp *Response) BodyWriteTo(w io.Writer) error {
 }
 
 // AppendBody appends p to response body.
+//
+// It is safe re-using p after the function returns.
 func (resp *Response) AppendBody(p []byte) {
 	resp.closeBodyStream()
 	resp.body = append(resp.body, p...)
@@ -333,6 +338,8 @@ func (resp *Response) AppendBodyString(s string) {
 }
 
 // SetBody sets response body.
+//
+// It is safe re-using body argument after the function returns.
 func (resp *Response) SetBody(body []byte) {
 	resp.closeBodyStream()
 	resp.body = append(resp.body[:0], body...)
@@ -372,6 +379,8 @@ func (req *Request) Body() []byte {
 }
 
 // AppendBody appends p to request body.
+//
+// It is safe re-using p after the function returns.
 func (req *Request) AppendBody(p []byte) {
 	req.RemoveMultipartFormFiles()
 	req.closeBodyStream()
@@ -386,6 +395,8 @@ func (req *Request) AppendBodyString(s string) {
 }
 
 // SetBody sets request body.
+//
+// It is safe re-using body argument after the function returns.
 func (req *Request) SetBody(body []byte) {
 	req.RemoveMultipartFormFiles()
 	req.closeBodyStream()
@@ -406,7 +417,7 @@ func (req *Request) ResetBody() {
 	req.body = req.body[:0]
 }
 
-// CopyTo copies req contents to dst.
+// CopyTo copies req contents to dst except of body stream.
 func (req *Request) CopyTo(dst *Request) {
 	dst.Reset()
 	req.Header.CopyTo(&dst.Header)
@@ -626,6 +637,12 @@ func reuseBody(body []byte) []byte {
 	return body[:0]
 }
 
+// maxReuseBodyLen is the maximum request and response body buffer capacity,
+// which may be reused.
+//
+// Body is thrown to GC if its' capacity exceeds this limit.
+//
+// This limits memory waste and memory fragmentation when re-using body buffers.
 const maxReuseBodyCap = 8 * 1024
 
 // Read reads request (including body) from the given r.
@@ -920,7 +937,8 @@ func (req *Request) Write(w *bufio.Writer) error {
 
 // WriteGzip writes response with gzipped body to w.
 //
-// The method sets 'Content-Encoding: gzip' header.
+// The method gzips response body and sets 'Content-Encoding: gzip'
+// header before writing response to w.
 //
 // WriteGzip doesn't flush response to w for performance reasons.
 func (resp *Response) WriteGzip(w *bufio.Writer) error {
@@ -936,7 +954,8 @@ func (resp *Response) WriteGzip(w *bufio.Writer) error {
 //     * CompressBestCompression
 //     * CompressDefaultCompression
 //
-// The method sets 'Content-Encoding: gzip' header.
+// The method gzips response body and sets 'Content-Encoding: gzip'
+// header before writing response to w.
 //
 // WriteGzipLevel doesn't flush response to w for performance reasons.
 func (resp *Response) WriteGzipLevel(w *bufio.Writer, level int) error {
@@ -948,7 +967,8 @@ func (resp *Response) WriteGzipLevel(w *bufio.Writer, level int) error {
 
 // WriteDeflate writes response with deflated body to w.
 //
-// The method sets 'Content-Encoding: deflate' header.
+// The method deflates response body and sets 'Content-Encoding: deflate'
+// header before writing response to w.
 //
 // WriteDeflate doesn't flush response to w for performance reasons.
 func (resp *Response) WriteDeflate(w *bufio.Writer) error {
@@ -964,7 +984,8 @@ func (resp *Response) WriteDeflate(w *bufio.Writer) error {
 //     * CompressBestCompression
 //     * CompressDefaultCompression
 //
-// The method sets 'Content-Encoding: deflate' header.
+// The method deflates response body and sets 'Content-Encoding: deflate'
+// header before writing response to w.
 //
 // WriteDeflateLevel doesn't flush response to w for performance reasons.
 func (resp *Response) WriteDeflateLevel(w *bufio.Writer, level int) error {
