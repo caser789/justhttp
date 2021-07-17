@@ -385,6 +385,21 @@ func (ctx *RequestCtx) IsTLS() bool {
 	return ok
 }
 
+// TLSConnectionState returns TLS connection state.
+//
+// The function returns nil if the underlying connection isn't tls.Conn.
+//
+// The returned state may be used for verifying TLS version, client certificates,
+// etc.
+func (ctx *RequestCtx) TLSConnectionState() *tls.ConnectionState {
+	tlsConn, ok := ctx.c.(*tls.Conn)
+	if !ok {
+		return nil
+	}
+	state := tlsConn.ConnectionState()
+	return &state
+}
+
 type firstByteReader struct {
 	c        net.Conn
 	ch       byte
@@ -436,16 +451,6 @@ var zeroTCPAddr = &net.TCPAddr{
 // ID returns unique ID of the request.
 func (ctx *RequestCtx) ID() uint64 {
 	return ctx.id
-}
-
-// TLSConnectionState returns TLS connection state.
-func (ctx *RequestCtx) TLSConnectionState() *tls.ConnectionState {
-	tlsConn, ok := ctx.c.(*tls.Conn)
-	if !ok {
-		return nil
-	}
-	state := tlsConn.ConnectionState()
-	return &state
 }
 
 // Time returns RequestHandler call time.
@@ -805,6 +810,8 @@ func (ctx *RequestCtx) ResetBody() {
 // Note that SendFile doesn't set Content-Type for the response body,
 // so set it yourself with SetContentType() before returning
 // from RequestHandler.
+//
+// See also ServeFile, FSHandler and FS.
 func (ctx *RequestCtx) SendFile(path string) error {
 	ifModStr := ctx.Request.Header.peek(strIfModifiedSince)
 	if len(ifModStr) > 0 {
