@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/flate"
 	"compress/gzip"
+	"compress/zlib"
 	"fmt"
 	"io"
 	"os"
@@ -40,7 +41,10 @@ var gzipReaderPool sync.Pool
 func acquireFlateReader(r io.Reader) (io.ReadCloser, error) {
 	v := flateReaderPool.Get()
 	if v == nil {
-		zr := flate.NewReader(r)
+		zr, err := zlib.NewReader(r)
+		if err != nil {
+			return nil, err
+		}
 		return zr, nil
 	}
 	zr := v.(io.ReadCloser)
@@ -56,9 +60,9 @@ func releaseFlateReader(zr io.ReadCloser) {
 }
 
 func resetFlateReader(zr io.ReadCloser, r io.Reader) error {
-	zrr, ok := zr.(flate.Resetter)
+	zrr, ok := zr.(zlib.Resetter)
 	if !ok {
-		panic("BUG: flate.Reader doesn't implement flate.Resetter???")
+		panic("BUG: zlib.Reader doesn't implement zlib.Resetter???")
 	}
 	return zrr.Reset(r, nil)
 }
@@ -123,7 +127,7 @@ func AppendGzipBytesLevel(dst, src []byte, level int) []byte {
 	return w.b
 }
 
-// WriteGzip writes gzipped p to w using the given compression level
+// WriteGzipLevel writes gzipped p to w using the given compression level
 // and returns the number of compressed bytes written to w.
 //
 // Supported compression levels are:
@@ -139,7 +143,7 @@ func WriteGzipLevel(w io.Writer, p []byte, level int) (int, error) {
 	return n, err
 }
 
-// WriteGzipLevel writes gzipped p to w and returns the number of compressed
+// WriteGzip writes gzipped p to w and returns the number of compressed
 // bytes written to w.
 func WriteGzip(w io.Writer, p []byte) (int, error) {
 	return WriteGzipLevel(w, p, CompressDefaultCompression)
@@ -204,9 +208,9 @@ func acquireFlateWriter(w io.Writer, level int) *flateWriter {
 
 	v := p.Get()
 	if v == nil {
-		zw, err := flate.NewWriter(w, level)
+		zw, err := zlib.NewWriterLevel(w, level)
 		if err != nil {
-			panic(fmt.Sprintf("BUG: unexpected error in flate.NewWriter(%d): %s", level, err))
+			panic(fmt.Sprintf("BUG: unexpected error in zlib.NewWriterLevel(%d): %s", level, err))
 		}
 		return &flateWriter{
 			Writer: zw,
@@ -224,7 +228,7 @@ func releaseFlateWriter(zw *flateWriter) {
 }
 
 type flateWriter struct {
-	*flate.Writer
+	*zlib.Writer
 	p *sync.Pool
 }
 
