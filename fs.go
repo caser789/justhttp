@@ -592,6 +592,11 @@ func (h *fsHandler) handleRequest(ctx *RequestCtx) {
 		ctx.Error("Are you a hacker?", StatusBadRequest)
 		return
 	}
+	if n := bytes.Index(path, strSlashDotDotSlash); n >= 0 {
+		ctx.Logger().Printf("cannot serve path with '/../' at position %d due to security reasons: %q", n, path)
+		ctx.Error("Internal Server Error", StatusInternalServerError)
+		return
+	}
 
 	mustCompress := false
 	fileCache := h.cache
