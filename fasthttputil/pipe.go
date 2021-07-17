@@ -8,85 +8,182 @@ import (
 	"time"
 )
 
-func newPipeConns() *pipeConns {
-	pc := &pipeConns{}
-	pc.c1.r = make(chan *byteBuffer, 1024)
-	pc.c1.w = make(chan *byteBuffer, 1024)
-	pc.c2.r = pc.c1.w
-	pc.c2.w = pc.c1.r
-	pc.c1.parent = pc
-	pc.c2.parent = pc
+// NewPipeConns returns new bi-directonal connection pipe.
+func NewPipeConns() *PipeConns {
+	ch1 := acquirePipeChan()
+	ch2 := acquirePipeChan()
+
+	pc := &PipeConns{}
+	pc.c1.r = ch1
+	pc.c1.w = ch2
+	pc.c2.r = ch2
+	pc.c2.w = ch1
+	pc.c1.pc = pc
+	pc.c2.pc = pc
 	return pc
 }
 
-type pipeConns struct {
-	c1     pipeConn
-	c2     pipeConn
-	lock   sync.RWMutex
-	closed bool
+// PipeConns provides bi-directional connection pipe,
+// which use in-process memory as a transport.
+//
+// PipeConns must be created by calling NewPipeConns.
+//
+// PipeConns have the following additional features comparing to connections
+// returned from net.Pipe():
+//
+//   * It is faster.
+//   * It buffers Write calls, so there is no need to have concurrent goroutine
+//     calling Read in order to unblock each Write call.
+type PipeConns struct {
+	c1 pipeConn
+	c2 pipeConn
+}
+
+// Conn1 returns the first end of bi-directional pipe.
+//
+// Data written to Conn1 may be read from Conn2.
+// Data written to Conn2 may be read from Conn1.
+func (pc *PipeConns) Conn1() net.Conn {
+	return &pc.c1
+}
+
+// Conn2 returns the second end of bi-directional pipe.
+//
+// Data written to Conn2 may be read from Conn1.
+// Data written to Conn1 may be read from Conn2.
+func (pc *PipeConns) Conn2() net.Conn {
+	return &pc.c2
+}
+
+func (pc *PipeConns) release() {
+	pc.c1.wlock.Lock()
+	pc.c2.wlock.Lock()
+	mustRelease := pc.c1.wclosed && pc.c2.wclosed
+	pc.c1.wlock.Unlock()
+	pc.c2.wlock.Unlock()
+
+	if mustRelease {
+		pc.c1.release()
+		pc.c2.release()
+	}
 }
 
 type pipeConn struct {
-	parent *pipeConns
-	r      chan *byteBuffer
-	w      chan *byteBuffer
-	b      *byteBuffer
-	bb     []byte
+	r  *pipeChan
+	w  *pipeChan
+	b  *byteBuffer
+	bb []byte
+
+	rlock   sync.Mutex
+	rclosed bool
+
+	wlock   sync.Mutex
+	wclosed bool
+
+	pc *PipeConns
 }
 
 func (c *pipeConn) Write(p []byte) (int, error) {
-	c.parent.lock.RLock()
-	if c.parent.closed {
-		c.parent.lock.RUnlock()
-		return 0, errors.New("connection closed")
-	}
-
 	b := acquireByteBuffer()
 	b.b = append(b.b[:0], p...)
-	c.w <- b
 
-	c.parent.lock.RUnlock()
+	c.wlock.Lock()
+	if c.wclosed {
+		c.wlock.Unlock()
+		releaseByteBuffer(b)
+		return 0, errors.New("connection closed for writing")
+	}
+	c.w.ch <- b
+	c.wlock.Unlock()
+
 	return len(p), nil
 }
 
 func (c *pipeConn) Read(p []byte) (int, error) {
-	c.parent.lock.RLock()
-	if c.parent.closed {
-		c.parent.lock.RUnlock()
-		return 0, errors.New("connection closed")
+	mayBlock := true
+	nn := 0
+	for len(p) > 0 {
+		n, err := c.read(p, mayBlock)
+		nn += n
+		if err != nil {
+			if !mayBlock && err == errWouldBlock {
+				err = nil
+			}
+			return nn, err
+		}
+		p = p[n:]
+		mayBlock = false
 	}
 
+	return nn, nil
+}
+
+func (c *pipeConn) read(p []byte, mayBlock bool) (int, error) {
 	if len(c.bb) == 0 {
 		releaseByteBuffer(c.b)
-		b, ok := <-c.r
-		if !ok {
-			c.parent.lock.RUnlock()
+		c.b = nil
+
+		c.rlock.Lock()
+		if c.rclosed {
+			c.rlock.Unlock()
 			return 0, io.EOF
 		}
-		c.b = b
+
+		if mayBlock {
+			c.b = <-c.r.ch
+		} else {
+			select {
+			case c.b = <-c.r.ch:
+			default:
+				c.rlock.Unlock()
+				return 0, errWouldBlock
+			}
+		}
+
+		if c.b == nil {
+			c.rclosed = true
+			c.rlock.Unlock()
+			return 0, io.EOF
+		}
+		c.rlock.Unlock()
+
 		c.bb = c.b.b
 	}
 	n := copy(p, c.bb)
 	c.bb = c.bb[n:]
 
-	c.parent.lock.RUnlock()
 	return n, nil
 }
 
+var errWouldBlock = errors.New("would block")
+
 func (c *pipeConn) Close() error {
-	var err error
-
-	c.parent.lock.Lock()
-	if !c.parent.closed {
-		close(c.r)
-		close(c.w)
-		c.parent.closed = true
-	} else {
-		err = errors.New("already closed")
+	c.wlock.Lock()
+	if !c.wclosed {
+		c.wclosed = true
+		c.w.ch <- nil
 	}
-	c.parent.lock.Unlock()
+	c.wlock.Unlock()
 
-	return err
+	c.pc.release()
+	return nil
+}
+
+func (c *pipeConn) release() {
+	c.rlock.Lock()
+
+	releaseByteBuffer(c.b)
+	c.b = nil
+	c.bb = nil
+
+	if !c.rclosed {
+		c.rclosed = true
+		releasePipeChan(c.r)
+	}
+
+	c.r = nil
+	c.w = nil
+	c.rlock.Unlock()
 }
 
 func (p *pipeConn) LocalAddr() net.Addr {
@@ -137,4 +234,34 @@ var byteBufferPool = &sync.Pool{
 	New: func() interface{} {
 		return &byteBuffer{}
 	},
+}
+
+func acquirePipeChan() *pipeChan {
+	ch := pipeChanPool.Get().(*pipeChan)
+	if len(ch.ch) > 0 {
+		panic("BUG: non-empty pipeChan acquired")
+	}
+	return ch
+}
+
+func releasePipeChan(ch *pipeChan) {
+	for b := range ch.ch {
+		releaseByteBuffer(b)
+		if b == nil {
+			break
+		}
+	}
+	pipeChanPool.Put(ch)
+}
+
+var pipeChanPool = &sync.Pool{
+	New: func() interface{} {
+		return &pipeChan{
+			ch: make(chan *byteBuffer, 4),
+		}
+	},
+}
+
+type pipeChan struct {
+	ch chan *byteBuffer
 }
