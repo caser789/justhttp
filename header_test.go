@@ -10,6 +10,79 @@ import (
 	"testing"
 )
 
+func TestAppendNormalizedHeaderKeyBytes(t *testing.T) {
+	testAppendNormalizedHeaderKeyBytes(t, "", "")
+	testAppendNormalizedHeaderKeyBytes(t, "Content-Type", "Content-Type")
+	testAppendNormalizedHeaderKeyBytes(t, "foO-bAr-BAZ", "Foo-Bar-Baz")
+}
+
+func testAppendNormalizedHeaderKeyBytes(t *testing.T, key, expectedKey string) {
+	buf := []byte("foobar")
+	result := AppendNormalizedHeaderKeyBytes(buf, []byte(key))
+	normalizedKey := result[len(buf):]
+	if string(normalizedKey) != expectedKey {
+		t.Fatalf("unexpected normalized key %q. Expecting %q", normalizedKey, expectedKey)
+	}
+}
+
+func TestRequestHeaderHTTP10ConnectionClose(t *testing.T) {
+	s := "GET / HTTP/1.0\r\nHost: foobar\r\n\r\n"
+	var h RequestHeader
+	br := bufio.NewReader(bytes.NewBufferString(s))
+	if err := h.Read(br); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	if !h.connectionCloseFast() {
+		t.Fatalf("expecting 'Connection: close' request header")
+	}
+	if !h.ConnectionClose() {
+		t.Fatalf("expecting 'Connection: close' request header")
+	}
+}
+
+func TestRequestHeaderHTTP10ConnectionKeepAlive(t *testing.T) {
+	s := "GET / HTTP/1.0\r\nHost: foobar\r\nConnection: keep-alive\r\n\r\n"
+	var h RequestHeader
+	br := bufio.NewReader(bytes.NewBufferString(s))
+	if err := h.Read(br); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	if h.ConnectionClose() {
+		t.Fatalf("unexpected 'Connection: close' request header")
+	}
+}
+
+func TestBufferStartEnd(t *testing.T) {
+	testBufferStartEnd(t, "", "", "")
+	testBufferStartEnd(t, "foobar", "foobar", "")
+
+	b := string(createFixedBody(199))
+	testBufferStartEnd(t, b, b, "")
+	for i := 0; i < 10; i++ {
+		b += "foobar"
+		testBufferStartEnd(t, b, b, "")
+	}
+
+	b = string(createFixedBody(400))
+	testBufferStartEnd(t, b, b, "")
+	for i := 0; i < 10; i++ {
+		b += "sadfqwer"
+		testBufferStartEnd(t, b, b[:200], b[len(b)-200:])
+	}
+}
+
+func testBufferStartEnd(t *testing.T, buf, expectedStart, expectedEnd string) {
+	start, end := bufferStartEnd([]byte(buf))
+	if string(start) != expectedStart {
+		t.Fatalf("unexpected start %q. Expecting %q. buf %q", start, expectedStart, buf)
+	}
+	if string(end) != expectedEnd {
+		t.Fatalf("unexpected end %q. Expecting %q. buf %q", end, expectedEnd, buf)
+	}
+}
+
 func TestResponseHeaderTrailingCRLFSuccess(t *testing.T) {
 	trailingCRLF := "\r\n\r\n\r\n"
 	s := "HTTP/1.1 200 OK\r\nContent-Type: aa\r\nContent-Length: 123\r\n\r\n" + trailingCRLF
