@@ -31,6 +31,8 @@ https://godoc.org/github.com/caser789/justhttp
     - [x] Inmemory Listener
     - [ ] TLS
         - [x] TLSConnectionState
+    - [ ] Client
+        - [ ] LB among multiple upstream hosts
 - Performance
     - [ ] Use sendfile syscall
     - [x] connection pool
