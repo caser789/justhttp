@@ -131,6 +131,9 @@ type Server struct {
 	// Per-connection buffer size for requests' reading.
 	// This also limits the maximum header size.
 	//
+	// Increase this buffer if your clients send multi-KB RequestURIs
+	// and/or multi-KB headers (for example, BIG cookies).
+	//
 	// Default buffer size is used if 0.
 	ReadBufferSize int
 
@@ -197,6 +200,16 @@ type Server struct {
 	//
 	// Server accepts all the requests by default.
 	GetOnly bool
+
+	// Logs all errors, including the most frequent
+	// 'connection reset by peer', 'broken pipe' and 'connection timeout'
+	// errors. Such errors are common in production serving real-world
+	// clients.
+	//
+	// By default the most frequent errors such as
+	// 'connection reset by peer', 'broken pipe' and 'connection timeout'
+	// are suppressed in order to limit output log traffic.
+	LogAllErrors bool
 
 	// Logger, which is used by RequestCtx.Logger().
 	//
@@ -282,8 +295,8 @@ func CompressHandlerLevel(h RequestHandler, level int) RequestHandler {
 // before return.
 //
 // It is unsafe modifying/reading RequestCtx instance from concurrently
-// running goroutines. The only exception is TimeoutError, which may be called
-// when other goroutines access RequestCtx.
+// running goroutines. The only exception is TimeoutError*, which may be called
+// while other goroutines accessing RequestCtx.
 type RequestCtx struct {
 	// Incoming request.
 	//
@@ -807,6 +820,8 @@ func getRedirectStatusCode(statusCode int) int {
 }
 
 // SetBody sets response body to the given value.
+//
+// It is safe re-using body argument after the function returns.
 func (ctx *RequestCtx) SetBody(body []byte) {
 	ctx.Response.SetBody(body)
 }
@@ -1057,6 +1072,7 @@ func (s *Server) Serve(ln net.Listener) error {
 	wp := &workerPool{
 		WorkerFunc:      s.serveConn,
 		MaxWorkersCount: maxWorkersCount,
+		LogAllErrors:    s.LogAllErrors,
 		Logger:          s.logger(),
 	}
 	wp.Start()

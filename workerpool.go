@@ -9,32 +9,20 @@ import (
 	"time"
 )
 
-var workerChanCap = func() int {
-	// Use blocking workerChan if GOMAXPROCS=1.
-	// This immediately switches Serve to WorkerFunc, which results
-	// in higher performance (under go1.5 at least).
-	if runtime.GOMAXPROCS(0) == 1 {
-		return 0
-	}
-
-	// Use non-blocking workerChan if GOMAXPROCS>1,
-	// since otherwise the Serve caller (Acceptor) may lag accepting
-	// new connections if WorkerFunc is CPU-bound.
-	return 1
-}()
-
 // workerPool serves incoming connections via a pool of workers
-// in FIFO order, i.e. the most recently stopped worker will serve the next
+// in FILO order, i.e. the most recently stopped worker will serve the next
 // incoming connection.
+//
+// Such a scheme keeps CPU caches hot (in theory).
 type workerPool struct {
 	// Function for serving server connections.
 	// It must leave c unclosed.
 	WorkerFunc func(c net.Conn) error
 
-	// Maximum number of workers to create.
 	MaxWorkersCount int
 
-	// Logger used by workerPool.
+	LogAllErrors bool
+
 	Logger Logger
 
 	lock         sync.Mutex
@@ -120,6 +108,20 @@ func (wp *workerPool) Serve(c net.Conn) bool {
 	return true
 }
 
+var workerChanCap = func() int {
+	// Use blocking workerChan if GOMAXPROCS=1.
+	// This immediately switches Serve to WorkerFunc, which results
+	// in higher performance (under go1.5 at least).
+	if runtime.GOMAXPROCS(0) == 1 {
+		return 0
+	}
+
+	// Use non-blocking workerChan if GOMAXPROCS>1,
+	// since otherwise the Serve caller (Acceptor) may lag accepting
+	// new connections if WorkerFunc is CPU-bound.
+	return 1
+}()
+
 func (wp *workerPool) getCh() *workerChan {
 	var ch *workerChan
 	createWorker := false
@@ -192,7 +194,9 @@ func (wp *workerPool) workerFunc(ch *workerChan) {
 		}
 		if err = wp.WorkerFunc(c); err != nil && err != errHijacked {
 			errStr := err.Error()
-			if !strings.Contains(errStr, "broken pipe") && !strings.Contains(errStr, "reset by peer") {
+			if wp.LogAllErrors || !(strings.Contains(errStr, "broken pipe") ||
+				strings.Contains(errStr, "reset by peer") ||
+				strings.Contains(errStr, "i/o timeout")) {
 				wp.Logger.Printf("error when serving connection %q<->%q: %s", c.LocalAddr(), c.RemoteAddr(), err)
 			}
 		}
