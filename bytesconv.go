@@ -12,8 +12,39 @@ import (
 	"unsafe"
 )
 
+// AppendHTMLEscape appends html-escaped s to dst and returns the extended dst.
+func AppendHTMLEscape(dst []byte, s string) []byte {
+	var prev int
+	var sub string
+	for i, n := 0, len(s); i < n; i++ {
+		sub = ""
+		switch s[i] {
+		case '<':
+			sub = "&lt;"
+		case '>':
+			sub = "&gt;"
+		case '"':
+			sub = "&quot;"
+		case '\'':
+			sub = "&#39;"
+		}
+		if len(sub) > 0 {
+			dst = append(dst, s[prev:i]...)
+			dst = append(dst, sub...)
+			prev = i + 1
+		}
+	}
+	return append(dst, s[prev:]...)
+}
+
+// AppendHTMLEscapeBytes appends html-escaped s to dst and returns
+// the extended dst.
+func AppendHTMLEscapeBytes(dst, s []byte) []byte {
+	return AppendHTMLEscape(dst, unsafeBytesToStr(s))
+}
+
 // AppendIPv4 appends string representation of the given ip v4 to dst
-// and returns the result (which may be newly allocated).
+// and returns the extended dst.
 func AppendIPv4(dst []byte, ip net.IP) []byte {
 	ip = ip.To4()
 	if ip == nil {
@@ -28,8 +59,7 @@ func AppendIPv4(dst []byte, ip net.IP) []byte {
 	return dst
 }
 
-// ParseIPv4 parses ip address from ipStr into dst and returns dst
-// (which may be newly allocated).
+// ParseIPv4 parses ip address from ipStr into dst and returns the extended dst.
 func ParseIPv4(dst net.IP, ipStr []byte) (net.IP, error) {
 	if len(dst) < net.IPv4len {
 		dst = make([]byte, net.IPv4len)
@@ -69,7 +99,7 @@ func ParseIPv4(dst net.IP, ipStr []byte) (net.IP, error) {
 }
 
 // AppendHTTPDate appends HTTP-compliant (RFC1123) representation of date
-// to dst and returns dst (which may be newly allocated).
+// to dst and returns the extended dst.
 func AppendHTTPDate(dst []byte, date time.Time) []byte {
 	dst = date.In(time.UTC).AppendFormat(dst, time.RFC1123)
 	copy(dst[len(dst)-3:], strGMT)
@@ -81,7 +111,7 @@ func ParseHTTPDate(date []byte) (time.Time, error) {
 	return time.Parse(time.RFC1123, unsafeBytesToStr(date))
 }
 
-// AppendUint appends n to dst and returns dst (which may be newly allocated).
+// AppendUint appends n to dst and returns the extended dst.
 func AppendUint(dst []byte, n int) []byte {
 	if n < 0 {
 		panic("BUG: int must be positive")
@@ -143,7 +173,7 @@ func ParseUfloat(buf []byte) (float64, error) {
 	}
 	b := buf
 	var v uint64
-	var offset float64 = 1.0
+	var offset = 1.0
 	var pointFound bool
 	for i, c := range b {
 		if c < '0' || c > '9' {
@@ -318,30 +348,34 @@ func AppendQuotedArg(dst, src []byte) []byte {
 	return dst
 }
 
-// EqualBytesStr returns true if string(b) == s.
-//
-// This function has no performance benefits comparing to string(b) == s.
-// It is left here for backwards compatibility only.
-func EqualBytesStr(b []byte, s string) bool {
-	return string(b) == s
-}
-
-// AppendBytesStr appends src to dst and returns dst
-// (which may be newly allocated).
-//
-// This function has no performance benefits comparing to append(dst, src...).
-// It is left here for backwards compatibility only.
-func AppendBytesStr(dst []byte, src string) []byte {
-	return append(dst, src...)
-}
-
 func appendQuotedPath(dst, src []byte) []byte {
 	for _, c := range src {
-		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '/' || c == '.' || c == ',' || c == '=' || c == ':' || c == '&' || c == '~' || c == '-' || c == '_' {
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' ||
+			c == '/' || c == '.' || c == ',' || c == '=' || c == ':' || c == '&' || c == '~' || c == '-' || c == '_' {
 			dst = append(dst, c)
 		} else {
 			dst = append(dst, '%', hexCharUpper(c>>4), hexCharUpper(c&15))
 		}
 	}
 	return dst
+}
+
+// EqualBytesStr returns true if string(b) == s.
+//
+// This function has no performance benefits comparing to string(b) == s.
+// It is left here for backwards compatibility only.
+//
+// This function is deperecated and may be deleted soon.
+func EqualBytesStr(b []byte, s string) bool {
+	return string(b) == s
+}
+
+// AppendBytesStr appends src to dst and returns the extended dst.
+//
+// This function has no performance benefits comparing to append(dst, src...).
+// It is left here for backwards compatibility only.
+//
+// This function is deprecated and may be deleted soon.
+func AppendBytesStr(dst []byte, src string) []byte {
+	return append(dst, src...)
 }
