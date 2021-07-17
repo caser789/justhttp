@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func TestListener(t *testing.T) {
+func TestNewListener(t *testing.T) {
 	addr := "localhost:10081"
 	serversCount := 20
 	requestsCount := 1000
@@ -17,7 +17,7 @@ func TestListener(t *testing.T) {
 	doneCh := make(chan struct{}, serversCount)
 
 	for i := 0; i < serversCount; i++ {
-		ln, err := Listener("tcp4", addr)
+		ln, err := Listen("tcp4", addr)
 		if err != nil {
 			t.Fatalf("cannot create listener %d: %s", i, err)
 		}

@@ -1,6 +1,6 @@
 // +build linux darwin dragonfly freebsd netbsd openbsd
 
-// Package provides TCP net.Listener with SO_REUSEPORT support.
+// Package reuseport provides TCP net.Listener with SO_REUSEPORT support.
 //
 // SO_REUSEPORT allows linear scaling server performance on multi-CPU servers.
 // See https://www.nginx.com/blog/socket-sharding-nginx-release-1-9-1/ for more details :)
@@ -44,12 +44,12 @@ func (e *ErrNoReusePort) Error() string {
 	return fmt.Sprintf("The OS doesn't support SO_REUSEPORT: %s", e.err)
 }
 
-// Listener returns TCP listener with SO_REUSEPORT option set.
+// Listen returns TCP listener with SO_REUSEPORT option set.
 //
 // Only tcp4 network is supported.
 //
 // ErrNoReusePort error is returned if the system doesn't support SO_REUSEPORT.
-func Listener(network, addr string) (l net.Listener, err error) {
+func Listen(network, addr string) (l net.Listener, err error) {
 	var (
 		soType, fd int
 		file       *os.File
@@ -69,7 +69,7 @@ func Listener(network, addr string) (l net.Listener, err error) {
 		return nil, err
 	}
 
-	if err = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, SO_REUSEPORT, 1); err != nil {
+	if err = syscall.SetsockoptInt(fd, syscall.SOL_SOCKET, soReusePort, 1); err != nil {
 		syscall.Close(fd)
 		return nil, &ErrNoReusePort{err}
 	}
