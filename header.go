@@ -454,7 +454,7 @@ func (h *RequestHeader) SetMethod(method string) {
 	h.method = append(h.method, method...)
 }
 
-// SetMethod sets HTTP request method.
+// SetMethodBytes sets HTTP request method.
 func (h *RequestHeader) SetMethodBytes(method []byte) {
 	h.method = append(h.method[:0], method...)
 }
@@ -475,7 +475,7 @@ func (h *RequestHeader) SetRequestURI(requestURI string) {
 	h.requestURI = append(h.requestURI[:0], requestURI...)
 }
 
-// SetRequestURI sets RequestURI for the first HTTP request line.
+// SetRequestURIBytes sets RequestURI for the first HTTP request line.
 // RequestURI must be properly encoded.
 // Use URI.RequestURI for constructing proper RequestURI if unsure.
 func (h *RequestHeader) SetRequestURIBytes(requestURI []byte) {
@@ -986,6 +986,8 @@ func (h *ResponseHeader) Cookie(cookie *Cookie) bool {
 }
 
 // Read reads response header from r.
+//
+// io.EOF is returned if r is closed before reading the first header byte.
 func (h *ResponseHeader) Read(r *bufio.Reader) error {
 	n := 1
 	for {
@@ -1015,16 +1017,26 @@ func (h *ResponseHeader) tryRead(r *bufio.Reader, n int) error {
 	b = mustPeekBuffered(r)
 	var headersLen int
 	if headersLen, err = h.parse(b); err != nil {
-		if err == errNeedMore && !isEOF {
-			return err
+		if err == errNeedMore {
+			if !isEOF {
+				return err
+			}
+
+			// Buggy servers may leave trailing CRLFs after response body.
+			// Treat this case as EOF.
+			if isOnlyCRLF(b) {
+				return io.EOF
+			}
 		}
-		return fmt.Errorf("erorr when reading response headers: %s", err)
+		return fmt.Errorf("error when reading response headers: %s. buf=%q", err, b)
 	}
 	mustDiscard(r, headersLen)
 	return nil
 }
 
 // Read reads request header from r.
+//
+// io.EOF is returned if r is closed before reading the first header byte.
 func (h *RequestHeader) Read(r *bufio.Reader) error {
 	n := 1
 	for {
@@ -1054,13 +1066,30 @@ func (h *RequestHeader) tryRead(r *bufio.Reader, n int) error {
 	b = mustPeekBuffered(r)
 	var headersLen int
 	if headersLen, err = h.parse(b); err != nil {
-		if err == errNeedMore && !isEOF {
-			return err
+		if err == errNeedMore {
+			if !isEOF {
+				return err
+			}
+
+			// Buggy clients may leave trailing CRLFs after the request body.
+			// Treat this case as EOF.
+			if isOnlyCRLF(b) {
+				return io.EOF
+			}
 		}
-		return fmt.Errorf("error when reading request headers: %s", err)
+		return fmt.Errorf("error when reading request headers: %s. buf=%q", err, b)
 	}
 	mustDiscard(r, headersLen)
 	return nil
+}
+
+func isOnlyCRLF(b []byte) bool {
+	for _, ch := range b {
+		if ch != '\r' && ch != '\n' {
+			return false
+		}
+	}
+	return true
 }
 
 func init() {
@@ -1347,7 +1376,7 @@ func (h *RequestHeader) parseFirstLine(buf []byte) (int, error) {
 		h.noHTTP11 = true
 		n = len(b)
 	} else if n == 0 {
-		return 0, fmt.Errorf("RequestURI cannot be empty in %q", buf)
+		return 0, fmt.Errorf("requestURI cannot be empty in %q", buf)
 	} else if !bytes.Equal(b[n+1:], strHTTP11) {
 		h.noHTTP11 = true
 	}
@@ -1574,7 +1603,7 @@ func parseContentLength(b []byte) (int, error) {
 		return -1, err
 	}
 	if n != len(b) {
-		return -1, fmt.Errorf("Non-numeric chars at the end of Content-Length")
+		return -1, fmt.Errorf("non-numeric chars at the end of Content-Length")
 	}
 	return v, nil
 }

@@ -10,13 +10,160 @@ import (
 	"testing"
 )
 
-func TestRequestSetByteRange(t *testing.T) {
-	testRequestSetByteRange(t, 0, 10, "bytes=0-10")
-	testRequestSetByteRange(t, 123, -1, "bytes=123-")
-	testRequestSetByteRange(t, -234, 58349, "bytes=-234")
+func TestResponseHeaderTrailingCRLFSuccess(t *testing.T) {
+	trailingCRLF := "\r\n\r\n\r\n"
+	s := "HTTP/1.1 200 OK\r\nContent-Type: aa\r\nContent-Length: 123\r\n\r\n" + trailingCRLF
+
+	var r ResponseHeader
+	br := bufio.NewReader(bytes.NewBufferString(s))
+	if err := r.Read(br); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	// try reading the trailing CRLF. It must return EOF
+	err := r.Read(br)
+	if err == nil {
+		t.Fatalf("expecting error")
+	}
+	if err != io.EOF {
+		t.Fatalf("unexpected error: %s. Expecting %s", err, io.EOF)
+	}
 }
 
-func testRequestSetByteRange(t *testing.T, startPos, endPos int, expectedV string) {
+func TestResponseHeaderTrailingCRLFError(t *testing.T) {
+	trailingCRLF := "\r\nerror\r\n\r\n"
+	s := "HTTP/1.1 200 OK\r\nContent-Type: aa\r\nContent-Length: 123\r\n\r\n" + trailingCRLF
+
+	var r ResponseHeader
+	br := bufio.NewReader(bytes.NewBufferString(s))
+	if err := r.Read(br); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	// try reading the trailing CRLF. It must return EOF
+	err := r.Read(br)
+	if err == nil {
+		t.Fatalf("expecting error")
+	}
+	if err == io.EOF {
+		t.Fatalf("unexpected error: %s", err)
+	}
+}
+
+func TestRequestHeaderTrailingCRLFSuccess(t *testing.T) {
+	trailingCRLF := "\r\n\r\n\r\n"
+	s := "GET / HTTP/1.1\r\nHost: aaa.com\r\n\r\n" + trailingCRLF
+
+	var r RequestHeader
+	br := bufio.NewReader(bytes.NewBufferString(s))
+	if err := r.Read(br); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	// try reading the trailing CRLF. It must return EOF
+	err := r.Read(br)
+	if err == nil {
+		t.Fatalf("expecting error")
+	}
+	if err != io.EOF {
+		t.Fatalf("unexpected error: %s. Expecting %s", err, io.EOF)
+	}
+}
+
+func TestRequestHeaderTrailingCRLFError(t *testing.T) {
+	trailingCRLF := "\r\nerror\r\n\r\n"
+	s := "GET / HTTP/1.1\r\nHost: aaa.com\r\n\r\n" + trailingCRLF
+
+	var r RequestHeader
+	br := bufio.NewReader(bytes.NewBufferString(s))
+	if err := r.Read(br); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+
+	// try reading the trailing CRLF. It must return EOF
+	err := r.Read(br)
+	if err == nil {
+		t.Fatalf("expecting error")
+	}
+	if err == io.EOF {
+		t.Fatalf("unexpected error: %s", err)
+	}
+}
+
+func TestRequestHeaderReadEOF(t *testing.T) {
+	var r RequestHeader
+
+	br := bufio.NewReader(&bytes.Buffer{})
+	err := r.Read(br)
+	if err == nil {
+		t.Fatalf("expecting error")
+	}
+	if err != io.EOF {
+		t.Fatalf("unexpected error: %s. Expecting %s", err, io.EOF)
+	}
+
+	// incomplete request header mustn't return io.EOF
+	br = bufio.NewReader(bytes.NewBufferString("GET "))
+	err = r.Read(br)
+	if err == nil {
+		t.Fatalf("expecting error")
+	}
+	if err == io.EOF {
+		t.Fatalf("expecting non-EOF error")
+	}
+}
+
+func TestResponseHeaderReadEOF(t *testing.T) {
+	var r ResponseHeader
+
+	br := bufio.NewReader(&bytes.Buffer{})
+	err := r.Read(br)
+	if err == nil {
+		t.Fatalf("expecting error")
+	}
+	if err != io.EOF {
+		t.Fatalf("unexpected error: %s. Expecting %s", err, io.EOF)
+	}
+
+	// incomplete response header mustn't return io.EOF
+	br = bufio.NewReader(bytes.NewBufferString("HTTP/1.1 "))
+	err = r.Read(br)
+	if err == nil {
+		t.Fatalf("expecting error")
+	}
+	if err == io.EOF {
+		t.Fatalf("expecting non-EOF error")
+	}
+}
+
+func TestResponseHeaderOldVersion(t *testing.T) {
+	var h ResponseHeader
+
+	s := "HTTP/1.0 200 OK\r\nContent-Length: 5\r\nContent-Type: aaa\r\n\r\n12345"
+	s += "HTTP/1.0 200 OK\r\nContent-Length: 2\r\nContent-Type: ass\r\nConnection: keep-alive\r\n\r\n42"
+	br := bufio.NewReader(bytes.NewBufferString(s))
+	if err := h.Read(br); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if !h.ConnectionClose() {
+		t.Fatalf("expecting 'Connection: close' for the response with old http protocol")
+	}
+
+	if err := h.Read(br); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if h.ConnectionClose() {
+		t.Fatalf("unexpected 'Connection: close' for keep-alive response with old http protocol")
+	}
+}
+
+func TestRequestHeaderSetByteRange(t *testing.T) {
+	testRequestHeaderSetByteRange(t, 0, 10, "bytes=0-10")
+	testRequestHeaderSetByteRange(t, 123, -1, "bytes=123-")
+	testRequestHeaderSetByteRange(t, -234, 58349, "bytes=-234")
+}
+
+func testRequestHeaderSetByteRange(t *testing.T, startPos, endPos int, expectedV string) {
 	var h RequestHeader
 	h.SetByteRange(startPos, endPos)
 	v := h.Peek("Range")
@@ -25,12 +172,12 @@ func testRequestSetByteRange(t *testing.T, startPos, endPos int, expectedV strin
 	}
 }
 
-func TestResponseSetContentRange(t *testing.T) {
-	testResponseSetContentRange(t, 0, 0, 1, "bytes 0-0/1")
-	testResponseSetContentRange(t, 123, 456, 789, "bytes 123-456/789")
+func TestResponseHeaderSetContentRange(t *testing.T) {
+	testResponseHeaderSetContentRange(t, 0, 0, 1, "bytes 0-0/1")
+	testResponseHeaderSetContentRange(t, 123, 456, 789, "bytes 123-456/789")
 }
 
-func testResponseSetContentRange(t *testing.T, startPos, endPos, contentLength int, expectedV string) {
+func testResponseHeaderSetContentRange(t *testing.T, startPos, endPos, contentLength int, expectedV string) {
 	var h ResponseHeader
 	h.SetContentRange(startPos, endPos, contentLength)
 	v := h.Peek("Content-Range")
