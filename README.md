@@ -32,7 +32,8 @@ https://godoc.org/github.com/caser789/justhttp
     - [ ] TLS
         - [x] TLSConnectionState
     - [ ] Client
-        - [ ] LB among multiple upstream hosts
+        - [x] LB among multiple upstream hosts
+        - [x] Max duration for each keep-alive connection
 - Performance
     - [ ] Use sendfile syscall
     - [x] connection pool
