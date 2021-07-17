@@ -3,12 +3,37 @@ package fasthttp
 import (
 	"bytes"
 	"io"
+	"sync"
 )
+
+// AcquireURI returns an empty URI instance from the pool.
+//
+// Release the URI with ReleaseURI after the URI is no longer needed.
+func AcquireURI() *URI {
+	return uriPool.Get().(*URI)
+}
+
+// ReleaseURI releases the URI acquired via AcquireURI.
+//
+// The released URI mustn't be used after releasing it, otherwise data races
+// may occur.
+func ReleaseURI(x *URI) {
+	x.Reset()
+	uriPool.Put(x)
+}
+
+var uriPool = &sync.Pool{
+	New: func() interface{} {
+		return &URI{}
+	},
+}
 
 // URI represents URI :) .
 //
 // It is forbidden copying URI instances. Create new instance and use CopyTo
 // instead.
+//
+// URI instance MUST NOT be used from concurrently running goroutines.
 type URI struct {
 	pathOriginal []byte
 	scheme       []byte
