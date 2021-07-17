@@ -77,6 +77,9 @@ var (
 // Path rewriter is used in FS for translating the current request
 // to the local filesystem path relative to FS.Root.
 //
+// The returned path must not contain '/../' substrings due to security reasons,
+// since such paths may refer files outside FS.Root.
+//
 // The returned path may refer to ctx members. For example, ctx.Path().
 type PathRewriteFunc func(ctx *RequestCtx) []byte
 
@@ -210,7 +213,9 @@ func FSHandler(root string, stripSlashes int) RequestHandler {
 		IndexNames:         []string{"index.html"},
 		GenerateIndexPages: true,
 		AcceptByteRange:    true,
-		PathRewrite:        NewPathSlashesStripper(stripSlashes),
+	}
+	if stripSlashes > 0 {
+		fs.PathRewrite = NewPathSlashesStripper(stripSlashes)
 	}
 	return fs.NewRequestHandler()
 }
@@ -592,10 +597,15 @@ func (h *fsHandler) handleRequest(ctx *RequestCtx) {
 		ctx.Error("Are you a hacker?", StatusBadRequest)
 		return
 	}
-	if n := bytes.Index(path, strSlashDotDotSlash); n >= 0 {
-		ctx.Logger().Printf("cannot serve path with '/../' at position %d due to security reasons: %q", n, path)
-		ctx.Error("Internal Server Error", StatusInternalServerError)
-		return
+	if h.pathRewrite != nil {
+		// There is no need to check for '/../' if path = ctx.Path(),
+		// since ctx.Path must normalize and sanitize the path.
+
+		if n := bytes.Index(path, strSlashDotDotSlash); n >= 0 {
+			ctx.Logger().Printf("cannot serve path with '/../' at position %d due to security reasons: %q", n, path)
+			ctx.Error("Internal Server Error", StatusInternalServerError)
+			return
+		}
 	}
 
 	mustCompress := false
