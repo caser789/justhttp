@@ -67,11 +67,13 @@ type Response struct {
 // SetRequestURI sets RequestURI.
 func (req *Request) SetRequestURI(requestURI string) {
 	req.Header.SetRequestURI(requestURI)
+    req.parseURI = false
 }
 
 // SetRequestURIBytes sets RequestURI.
 func (req *Request) SetRequestURIBytes(requestURI []byte) {
 	req.Header.SetRequestURIBytes(requestURI)
+    req.parseURI = false
 }
 
 // StatusCode returns response status code.
