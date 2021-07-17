@@ -34,6 +34,7 @@ https://godoc.org/github.com/caser789/justhttp
     - [ ] Client
         - [x] LB among multiple upstream hosts
         - [x] Max duration for each keep-alive connection
+    - [x] Virtual hosting
 - Performance
     - [ ] Use sendfile syscall
     - [x] connection pool
