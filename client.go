@@ -1089,6 +1089,9 @@ func (c *HostClient) dialHostHard() (conn net.Conn, err error) {
 		if err == nil {
 			return conn, nil
 		}
+		if err == ErrDialTimeout {
+			return nil, err
+		}
 		n--
 	}
 	return nil, err
