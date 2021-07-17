@@ -438,6 +438,16 @@ func (ctx *RequestCtx) ID() uint64 {
 	return ctx.id
 }
 
+// TLSConnectionState returns TLS connection state.
+func (ctx *RequestCtx) TLSConnectionState() *tls.ConnectionState {
+	tlsConn, ok := ctx.c.(*tls.Conn)
+	if !ok {
+		return nil
+	}
+	state := tlsConn.ConnectionState()
+	return &state
+}
+
 // Time returns RequestHandler call time.
 func (ctx *RequestCtx) Time() time.Time {
 	return ctx.time
