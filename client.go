@@ -359,8 +359,9 @@ func (c *Client) mCleaner(m map[string]*HostClient) {
 	}
 }
 
-// Maximum number of concurrent connections http client may establish per host
-// by default.
+// DefaultMaxConnsPerHost is the maximum number of concurrent connections
+// http client may establish per host by default (i.e. if
+// Client.MaxConnsPerHost isn't set).
 const DefaultMaxConnsPerHost = 512
 
 // DialFunc must establish connection to addr.
@@ -684,10 +685,12 @@ func doRequestFollowRedirects(req *Request, dst []byte, url string, c clientDoer
 }
 
 func getRedirectURL(baseURL string, location []byte) string {
-	var u URI
-	u.Parse(nil, []byte(baseURL))
+	u := AcquireURI()
+	u.Update(baseURL)
 	u.UpdateBytes(location)
-	return u.String()
+	redirectURL := u.String()
+	ReleaseURI(u)
+	return redirectURL
 }
 
 var (
