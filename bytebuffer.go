@@ -28,6 +28,10 @@ func (b *ByteBuffer) Write(p []byte) (int, error) {
 	return len(p), nil
 }
 
+func (b *ByteBuffer) Reset() {
+	b.B = b.B[:0]
+}
+
 // AcquireByteBuffer returns an empty byte buffer from the pool.
 //
 // Acquired byte buffer may be returned to the pool via ReleaseByteBuffer call.
