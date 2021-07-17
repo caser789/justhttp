@@ -15,6 +15,58 @@ import (
 	"github.com/caser789/justhttp/fasthttputil"
 )
 
+func TestClientDoTimeoutDisableNormalizing(t *testing.T) {
+	ln := fasthttputil.NewInmemoryListener()
+
+	s := &Server{
+		Handler: func(ctx *RequestCtx) {
+			ctx.Response.Header.Set("foo-BAR", "baz")
+		},
+		DisableHeaderNamesNormalizing: true,
+	}
+
+	serverStopCh := make(chan struct{})
+	go func() {
+		if err := s.Serve(ln); err != nil {
+			t.Fatalf("unexpected error: %s", err)
+		}
+		close(serverStopCh)
+	}()
+
+	c := &Client{
+		Dial: func(addr string) (net.Conn, error) {
+			return ln.Dial()
+		},
+		DisableHeaderNamesNormalizing: true,
+	}
+
+	var req Request
+	req.SetRequestURI("http://aaaai.com/bsdf?sddfsd")
+	var resp Response
+	for i := 0; i < 5; i++ {
+		if err := c.DoTimeout(&req, &resp, time.Second); err != nil {
+			t.Fatalf("unexpected error: %s", err)
+		}
+		hv := resp.Header.Peek("foo-BAR")
+		if string(hv) != "baz" {
+			t.Fatalf("unexpected header value: %q. Expecting %q", hv, "baz")
+		}
+		hv = resp.Header.Peek("Foo-Bar")
+		if len(hv) > 0 {
+			t.Fatalf("unexpected non-empty header value %q", hv)
+		}
+	}
+
+	if err := ln.Close(); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	select {
+	case <-serverStopCh:
+	case <-time.After(time.Second):
+		t.Fatalf("timeout")
+	}
+}
+
 func TestHostClientMaxConnDuration(t *testing.T) {
 	ln := fasthttputil.NewInmemoryListener()
 
@@ -454,8 +506,8 @@ func TestClientHTTPSConcurrent(t *testing.T) {
 		}
 		go func() {
 			defer wg.Done()
-			testClientGet(t, &defaultClient, addr, 300)
-			testClientPost(t, &defaultClient, addr, 100)
+			testClientGet(t, &defaultClient, addr, 30)
+			testClientPost(t, &defaultClient, addr, 10)
 		}()
 	}
 	wg.Wait()
@@ -512,8 +564,8 @@ func TestClientConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			testClientGet(t, &defaultClient, addr, 300)
-			testClientPost(t, &defaultClient, addr, 100)
+			testClientGet(t, &defaultClient, addr, 30)
+			testClientPost(t, &defaultClient, addr, 10)
 		}()
 	}
 	wg.Wait()
@@ -548,8 +600,8 @@ func TestHostClientConcurrent(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			testHostClientGet(t, c, 300)
-			testHostClientPost(t, c, 100)
+			testHostClientGet(t, c, 30)
+			testHostClientPost(t, c, 10)
 		}()
 	}
 	wg.Wait()
