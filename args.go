@@ -6,14 +6,17 @@ import (
 	"io"
 )
 
-// Args represents query arguments
+// Args represents query arguments.
 //
 // It is forbidden copying Args instances. Create new instances instead
-// and use CopyTo()
+// and use CopyTo().
+//
+// It is unsafe modifying/reading Args instance from concurrently
+// running goroutines.
 type Args struct {
 	args  []argsKV
-	buf   []byte
 	bufKV argsKV
+	buf   []byte
 }
 
 type argsKV struct {
@@ -45,16 +48,75 @@ func (a *Args) Len() int {
 	return len(a.args)
 }
 
-// SetUint sets uint value for the given key.
-func (a *Args) SetUint(key string, value int) {
-	a.bufKV.key = append(a.bufKV.key[:0], key...)
-	a.SetUintBytes(a.bufKV.key, value)
+// Parse parses the given string containing query args.
+func (a *Args) Parse(s string) {
+	a.buf = append(a.buf[:0], s...)
+	a.ParseBytes(a.buf)
 }
 
-// SetUintBytes sets uint value for the given key.
-func (a *Args) SetUintBytes(key []byte, value int) {
-	a.bufKV.value = AppendUint(a.bufKV.value[:0], value)
-	a.SetBytesKV(key, a.bufKV.value)
+// ParseBytes parses the given b containing query args.
+func (a *Args) ParseBytes(b []byte) {
+	a.Reset()
+
+	var s argsScanner
+	s.b = b
+
+	var kv *argsKV
+	a.args, kv = allocArg(a.args)
+	for s.next(kv) {
+		if len(kv.key) > 0 || len(kv.value) > 0 {
+			a.args, kv = allocArg(a.args)
+		}
+	}
+	a.args = releaseArg(a.args)
+}
+
+// String returns string representation of query args.
+func (a *Args) String() string {
+	return string(a.QueryString())
+}
+
+// QueryString returns query string for the args.
+//
+// The returned value is valid until the next call to Args methods.
+func (a *Args) QueryString() []byte {
+	a.buf = a.AppendBytes(a.buf[:0])
+	return a.buf
+}
+
+// AppendBytes appends query string to dst and returns the extended dst.
+func (a *Args) AppendBytes(dst []byte) []byte {
+	for i, n := 0, len(a.args); i < n; i++ {
+		kv := &a.args[i]
+		dst = AppendQuotedArg(dst, kv.key)
+		if len(kv.value) > 0 {
+			dst = append(dst, '=')
+			dst = AppendQuotedArg(dst, kv.value)
+		}
+		if i+1 < n {
+			dst = append(dst, '&')
+		}
+	}
+	return dst
+}
+
+// WriteTo writes query string to w.
+//
+// WriteTo implements io.WriterTo interface.
+func (a *Args) WriteTo(w io.Writer) (int64, error) {
+	n, err := w.Write(a.QueryString())
+	return int64(n), err
+}
+
+// Del deletes argument with the given key from query args.
+func (a *Args) Del(key string) {
+	a.bufKV.key = append(a.bufKV.key[:0], key...)
+	a.DelBytes(a.bufKV.key)
+}
+
+// DelBytes deletes argument with the given key from query args.
+func (a *Args) DelBytes(key []byte) {
+	a.args = delArg(a.args, key)
 }
 
 // Set sets 'key=value' argument.
@@ -94,6 +156,22 @@ func (a *Args) PeekBytes(key []byte) []byte {
 	return peekArgBytes(a.args, key)
 }
 
+// PeekMulti returns all the arg values for the given key.
+func (a *Args) PeekMulti(key string) [][]byte {
+	var values [][]byte
+	a.VisitAll(func(k, v []byte) {
+		if string(k) == key {
+			values = append(values, v)
+		}
+	})
+	return values
+}
+
+// PeekMultiBytes returns all the arg values for the given key.
+func (a *Args) PeekMultiBytes(key []byte) [][]byte {
+	return a.PeekMulti(unsafeBytesToStr(key))
+}
+
 // Has returns true if the given key exists in Args.
 func (a *Args) Has(key string) bool {
 	a.bufKV.key = append(a.bufKV.key[:0], key...)
@@ -105,79 +183,8 @@ func (a *Args) HasBytes(key []byte) bool {
 	return hasArg(a.args, key)
 }
 
-// WriteTo writes query string to w.
-//
-// WriteTo implements io.WriterTo interface.
-func (a *Args) WriteTo(w io.Writer) (int64, error) {
-	n, err := w.Write(a.QueryString())
-	return int64(n), err
-}
-
-// Del deletes argument with the given key from query args.
-func (a *Args) Del(key string) {
-	a.bufKV.key = append(a.bufKV.key[:0], key...)
-	a.DelBytes(a.bufKV.key)
-}
-
-// DelBytes deletes argument with the given key from query args.
-func (a *Args) DelBytes(key []byte) {
-	a.args = delArg(a.args, key)
-}
-
-// String returns string representation of query args.
-func (a *Args) String() string {
-	return string(a.QueryString())
-}
-
-// QueryString returns query string for the args.
-//
-// The returned value is valid until the next call to Args methods.
-func (a *Args) QueryString() []byte {
-	a.buf = a.AppendBytes(a.buf[:0])
-	return a.buf
-}
-
-// AppendBytes appends query string to dst and returns dst
-// (which may be newly allocated).
-func (a *Args) AppendBytes(dst []byte) []byte {
-	for i, n := 0, len(a.args); i < n; i++ {
-		kv := &a.args[i]
-		dst = AppendQuotedArg(dst, kv.key)
-		if len(kv.value) > 0 {
-			dst = append(dst, '=')
-			dst = AppendQuotedArg(dst, kv.value)
-		}
-		if i+1 < n {
-			dst = append(dst, '&')
-		}
-	}
-	return dst
-}
-
-// Parse parsed the given string containning query args.
-func (a *Args) Parse(s string) {
-	a.buf = append(a.buf[:0], s...)
-	a.ParseBytes(a.buf)
-}
-
-// ParseBytes parses the given b containing query args.
-func (a *Args) ParseBytes(b []byte) {
-	a.Reset()
-	var s argsScanner
-	s.b = b
-
-	var kv *argsKV
-	a.args, kv = allocArg(a.args)
-	for s.next(kv) {
-		if len(kv.key) > 0 || len(kv.value) > 0 {
-			a.args, kv = allocArg(a.args)
-		}
-	}
-	a.args = releaseArg(a.args)
-}
-
-// ErrNoArgValue is returned when Args with the given key is missing.
-var ErrNoArgValue = errors.New("no Args for the given key")
+// ErrNoArgValue is returned when Args value with the given key is missing.
+var ErrNoArgValue = errors.New("no Args value for the given key")
 
 // GetUint returns uint value for the given key.
 func (a *Args) GetUint(key string) (int, error) {
@@ -188,9 +195,21 @@ func (a *Args) GetUint(key string) (int, error) {
 	return ParseUint(value)
 }
 
+// SetUint sets uint value for the given key.
+func (a *Args) SetUint(key string, value int) {
+	a.bufKV.key = append(a.bufKV.key[:0], key...)
+	a.SetUintBytes(a.bufKV.key, value)
+}
+
+// SetUintBytes sets uint value for the given key.
+func (a *Args) SetUintBytes(key []byte, value int) {
+	a.bufKV.value = AppendUint(a.bufKV.value[:0], value)
+	a.SetBytesKV(key, a.bufKV.value)
+}
+
 // GetUintOrZero returns uint value for the given key.
 //
-// Zero(0) is returned on error.
+// Zero (0) is returned on error.
 func (a *Args) GetUintOrZero(key string) int {
 	n, err := a.GetUint(key)
 	if err != nil {
@@ -210,45 +229,13 @@ func (a *Args) GetUfloat(key string) (float64, error) {
 
 // GetUfloatOrZero returns ufloat value for the given key.
 //
-// Zero(0) is returned on error.
+// Zero (0) is returned on error.
 func (a *Args) GetUfloatOrZero(key string) float64 {
 	f, err := a.GetUfloat(key)
 	if err != nil {
 		f = 0
 	}
 	return f
-}
-
-//////////////////////////////////////////////////
-// private functions
-//////////////////////////////////////////////////
-
-func decodeArg(dst, src []byte, decodePlus bool) []byte {
-	return decodeArgAppend(dst[:0], src, decodePlus)
-}
-
-func decodeArgAppend(dst, src []byte, decodePlus bool) []byte {
-	for i, n := 0, len(src); i < n; i++ {
-		c := src[i]
-		if c == '%' {
-			if i+2 >= n {
-				return append(dst, src[i:]...)
-			}
-			x1 := hexbyte2int(src[i+1])
-			x2 := hexbyte2int(src[i+2])
-			if x1 < 0 || x2 < 0 {
-				dst = append(dst, c)
-			} else {
-				dst = append(dst, byte(x1<<4|x2))
-				i += 2
-			}
-		} else if decodePlus && c == '+' {
-			dst = append(dst, ' ')
-		} else {
-			dst = append(dst, c)
-		}
-	}
-	return dst
 }
 
 func visitArgs(args []argsKV, f func(k, v []byte)) {
@@ -312,6 +299,38 @@ func setArg(h []argsKV, key, value []byte) []argsKV {
 	return append(h, kv)
 }
 
+func appendArg(args []argsKV, key, value []byte) []argsKV {
+	var kv *argsKV
+	args, kv = allocArg(args)
+	kv.key = append(kv.key[:0], key...)
+	kv.value = append(kv.value[:0], value...)
+	return args
+}
+
+func allocArg(h []argsKV) ([]argsKV, *argsKV) {
+	n := len(h)
+	if cap(h) > n {
+		h = h[:n+1]
+	} else {
+		h = append(h, argsKV{})
+	}
+	return h, &h[n]
+}
+
+func releaseArg(h []argsKV) []argsKV {
+	return h[:len(h)-1]
+}
+
+func hasArg(h []argsKV, k []byte) bool {
+	for i, n := 0, len(h); i < n; i++ {
+		kv := &h[i]
+		if bytes.Equal(kv.key, k) {
+			return true
+		}
+	}
+	return false
+}
+
 func peekArgBytes(h []argsKV, k []byte) []byte {
 	for i, n := 0, len(h); i < n; i++ {
 		kv := &h[i]
@@ -331,10 +350,6 @@ func peekArgStr(h []argsKV, k string) []byte {
 	}
 	return nil
 }
-
-//////////////////////////////////////////////////
-// argsParser
-//////////////////////////////////////////////////
 
 type argsScanner struct {
 	b []byte
@@ -377,34 +392,30 @@ func (s *argsScanner) next(kv *argsKV) bool {
 	return true
 }
 
-func hasArg(h []argsKV, k []byte) bool {
-	for i, n := 0, len(h); i < n; i++ {
-		kv := &h[i]
-		if bytes.Equal(kv.key, k) {
-			return true
+func decodeArg(dst, src []byte, decodePlus bool) []byte {
+	return decodeArgAppend(dst[:0], src, decodePlus)
+}
+
+func decodeArgAppend(dst, src []byte, decodePlus bool) []byte {
+	for i, n := 0, len(src); i < n; i++ {
+		c := src[i]
+		if c == '%' {
+			if i+2 >= n {
+				return append(dst, src[i:]...)
+			}
+			x1 := hexbyte2int(src[i+1])
+			x2 := hexbyte2int(src[i+2])
+			if x1 < 0 || x2 < 0 {
+				dst = append(dst, c)
+			} else {
+				dst = append(dst, byte(x1<<4|x2))
+				i += 2
+			}
+		} else if decodePlus && c == '+' {
+			dst = append(dst, ' ')
+		} else {
+			dst = append(dst, c)
 		}
 	}
-	return false
-}
-
-func allocArg(h []argsKV) ([]argsKV, *argsKV) {
-	n := len(h)
-	if cap(h) > n {
-		h = h[:n+1]
-	} else {
-		h = append(h, argsKV{})
-	}
-	return h, &h[n]
-}
-
-func releaseArg(h []argsKV) []argsKV {
-	return h[:len(h)-1]
-}
-
-func appendArg(args []argsKV, key, value []byte) []argsKV {
-	var kv *argsKV
-	args, kv = allocArg(args)
-	kv.key = append(kv.key[:0], key...)
-	kv.value = append(kv.value[:0], value...)
-	return args
+	return dst
 }
