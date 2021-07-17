@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/caser789/jasthttp/fasthttputil"
+	"github.com/caser789/justhttp/fasthttputil"
 )
 
 func TestHostClientMultipleAddrs(t *testing.T) {
