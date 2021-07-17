@@ -410,7 +410,7 @@ func (req *Request) ResetBody() {
 func (req *Request) CopyTo(dst *Request) {
 	dst.Reset()
 	req.Header.CopyTo(&dst.Header)
-	dst.body = append(dst.body[:0], req.Body()...)
+	dst.body = append(dst.body[:0], req.body...)
 
 	req.uri.CopyTo(&dst.uri)
 	dst.parsedURI = req.parsedURI
