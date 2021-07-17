@@ -28,6 +28,7 @@ https://godoc.org/github.com/caser789/justhttp
     - [x] 100-continue
     - [x] Header: Content-Range
     - [x] Header: Range: bytes=startPos-endPos
+    - [x] Inmemory Listener
 - Performance
     - [ ] Use sendfile syscall
     - [x] connection pool
