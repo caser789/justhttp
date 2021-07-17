@@ -321,6 +321,8 @@ type RequestCtx struct {
 // HijackHandler must process the hijacked connection c.
 //
 // The connection c is automatically closed after returning from HijackHandler.
+//
+// The connection c must not be used after returning from the handler.
 type HijackHandler func(c net.Conn)
 
 // Hijack registers the given handler for connection hijacking.
@@ -630,7 +632,7 @@ func SaveMultipartFile(fh *multipart.FileHeader, path string) error {
 		return err
 	}
 	defer ff.Close()
-	_, err = io.Copy(ff, f)
+	_, err = copyZeroAlloc(ff, f)
 	return err
 }
 
@@ -1051,7 +1053,8 @@ func newTLSListener(ln net.Listener, certFile, keyFile string) (net.Listener, er
 	return tls.NewListener(ln, tlsConfig), nil
 }
 
-// Default maximum number of concurrent connections the Server may serve.
+// DefaultConcurrency is the maximum number of concurrent connections
+// the Server may serve by default (i.e. if Server.Concurrency isn't set).
 const DefaultConcurrency = 256 * 1024
 
 // Serve serves incoming connections from the given listener.

@@ -213,8 +213,9 @@ type FS struct {
 	h    RequestHandler
 }
 
-// FS adds this suffix to the original file names when trying to store
-// compressed file under the new file name. See FS.Compress for details.
+// FSCompressedFileSuffix is the suffix FS adds to the original file names
+// when trying to store compressed file under the new file name.
+// See FS.Compress for details.
 const FSCompressedFileSuffix = ".fasthttp.gz"
 
 // FSHandlerCacheDuration is the duration for caching open file handles
@@ -1002,7 +1003,7 @@ func (h *fsHandler) compressFileNolock(f *os.File, fileInfo os.FileInfo, filePat
 	}
 
 	zw := acquireGzipWriter(zf, CompressDefaultCompression)
-	_, err = io.Copy(zw, f)
+	_, err = copyZeroAlloc(zw, f)
 	if err1 := zw.Flush(); err == nil {
 		err = err1
 	}
