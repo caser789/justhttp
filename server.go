@@ -53,6 +53,14 @@ func Serve(ln net.Listener, handler RequestHandler) error {
 	return s.Serve(ln)
 }
 
+// ServeTLS serves HTTPS requests from the given net.Listener
+func ServeTLS(ln net.Listener, certFile, keyFile string, handler RequestHandler) error {
+	s := &Server{
+		Handler: handler,
+	}
+	return s.ServeTLS(ln, certFile, keyFile)
+}
+
 // ListenAndServe serves HTTP requests from the given TCP addr
 // using the given handler.
 func ListenAndServe(addr string, handler RequestHandler) error {
