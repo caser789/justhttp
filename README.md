@@ -26,6 +26,8 @@ https://godoc.org/github.com/caser789/justhttp
     - [x] handle Connection: close
     - [ ] shadow to handle timeout
     - [x] 100-continue
+    - [x] Header: Content-Range
+    - [x] Header: Range: bytes=startPos-endPos
 - Performance
     - [ ] Use sendfile syscall
     - [x] connection pool
