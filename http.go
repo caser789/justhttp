@@ -649,11 +649,6 @@ func reuseBody(body []byte) []byte {
 	// at least 1/7 of the full capacity during the last usage.
 	// This should reduce memory fragmentation in the long run.
 
-	bodyCap := cap(body)
-	bodyLen := len(body)
-	if bodyLen > 0 && bodyCap > 8192 && ((bodyCap-bodyLen)>>3) > bodyLen {
-		return nil
-	}
 	return body[:0]
 }
 
