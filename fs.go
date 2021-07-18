@@ -29,7 +29,7 @@ import (
 //
 // See also RequestCtx.SendFileBytes.
 func ServeFileBytesUncompressed(ctx *RequestCtx, path []byte) {
-	ServeFileUncompressed(ctx, unsafeBytesToStr(path))
+	ServeFileUncompressed(ctx, b2s(path))
 }
 
 // ServeFileUncompressed returns HTTP response containing file contents
@@ -61,7 +61,7 @@ func ServeFileUncompressed(ctx *RequestCtx, path string) {
 //
 // See also RequestCtx.SendFileBytes.
 func ServeFileBytes(ctx *RequestCtx, path []byte) {
-	ServeFile(ctx, unsafeBytesToStr(path))
+	ServeFile(ctx, b2s(path))
 }
 
 // ServeFile returns HTTP response containing compressed file contents
@@ -190,6 +190,8 @@ func NewPathPrefixStripper(prefixSize int) PathRewriteFunc {
 
 // FS represents settings for request handler serving static files
 // from the local filesystem.
+//
+// It is prohibited copying FS values. Create new values instead.
 type FS struct {
 	noCopy noCopy
 
