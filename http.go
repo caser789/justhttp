@@ -433,9 +433,13 @@ func (req *Request) ResetBody() {
 
 // CopyTo copies req contents to dst except of body stream.
 func (req *Request) CopyTo(dst *Request) {
+	req.copyToSkipBody(dst)
+	dst.body = append(dst.body[:0], req.body...)
+}
+
+func (req *Request) copyToSkipBody(dst *Request) {
 	dst.Reset()
 	req.Header.CopyTo(&dst.Header)
-	dst.body = append(dst.body[:0], req.body...)
 
 	req.uri.CopyTo(&dst.uri)
 	dst.parsedURI = req.parsedURI
@@ -449,10 +453,24 @@ func (req *Request) CopyTo(dst *Request) {
 
 // CopyTo copies resp contents to dst except of body stream.
 func (resp *Response) CopyTo(dst *Response) {
+	resp.copyToSkipBody(dst)
+	dst.body = append(dst.body[:0], resp.body...)
+}
+
+func (resp *Response) copyToSkipBody(dst *Response) {
 	dst.Reset()
 	resp.Header.CopyTo(&dst.Header)
-	dst.body = append(dst.body[:0], resp.body...)
 	dst.SkipBody = resp.SkipBody
+}
+
+func swapRequestBody(a, b *Request) {
+	a.body, b.body = b.body, a.body
+	a.bodyStream, b.bodyStream = b.bodyStream, a.bodyStream
+}
+
+func swapResponseBody(a, b *Response) {
+	a.body, b.body = b.body, a.body
+	a.bodyStream, b.bodyStream = b.bodyStream, a.bodyStream
 }
 
 // URI returns request URI
@@ -645,10 +663,15 @@ func (resp *Response) resetSkipHeader() {
 }
 
 func reuseBody(body []byte) []byte {
-	// Reuse body buffer only if its' capacity has been used for
-	// at least 1/7 of the full capacity during the last usage.
-	// This should reduce memory fragmentation in the long run.
-
+	// Production monitoring shows that it is very difficult to create
+	// an optimal strategy for body buffer re-use for real-world loads.
+	//
+	// For instance, the strategy 'throw away big buffers, while re-use
+	// small buffers' fails when small and large responses are equally
+	// distributed.
+	//
+	// So just re-use all body buffers irregardless of their sizes
+	// in the hope sync.Pool+GC finds out an optimal strategy :)
 	return body[:0]
 }
 
