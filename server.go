@@ -1188,6 +1188,8 @@ func (s *Server) Serve(ln net.Listener) error {
 					"Try increasing Server.Concurrency", maxWorkersCount)
 				lastOverflowErrorTime = time.Now()
 			}
+
+			time.Sleep(100 * time.Millisecond)
 		}
 		c = nil
 	}
