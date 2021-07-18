@@ -1813,6 +1813,10 @@ func (c *PipelineClient) logger() Logger {
 
 // PendingRequests returns the current number of pending requests pipelined
 // to the server.
+//
+// This number may exceed MaxPendingRequests by up to two times, since
+// the client may keep up to MaxPendingRequests requests in the queue before
+// sending them to the server.
 func (c *PipelineClient) PendingRequests() int {
 	c.init()
 
