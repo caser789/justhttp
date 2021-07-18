@@ -1817,7 +1817,7 @@ func (c *PipelineClient) PendingRequests() int {
 	c.init()
 
 	c.chLock.Lock()
-	n := len(c.chR)
+	n := len(c.chR) + len(c.chW)
 	c.chLock.Unlock()
 	return n
 }
