@@ -602,7 +602,7 @@ func TestClientHTTPSConcurrent(t *testing.T) {
 	defer sHTTPS.Stop()
 
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 4; i++ {
 		wg.Add(1)
 		addr := "http://" + addrHTTP
 		if i&1 != 0 {
@@ -610,7 +610,7 @@ func TestClientHTTPSConcurrent(t *testing.T) {
 		}
 		go func() {
 			defer wg.Done()
-			testClientGet(t, &defaultClient, addr, 30)
+			testClientGet(t, &defaultClient, addr, 20)
 			testClientPost(t, &defaultClient, addr, 10)
 		}()
 	}
@@ -627,13 +627,13 @@ func TestClientManyServers(t *testing.T) {
 	}
 
 	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
+	for i := 0; i < 4; i++ {
 		wg.Add(1)
 		addr := "http://" + addrs[i]
 		go func() {
 			defer wg.Done()
-			testClientGet(t, &defaultClient, addr, 300)
-			testClientPost(t, &defaultClient, addr, 100)
+			testClientGet(t, &defaultClient, addr, 20)
+			testClientPost(t, &defaultClient, addr, 10)
 		}()
 	}
 	wg.Wait()
@@ -670,42 +670,6 @@ func TestClientConcurrent(t *testing.T) {
 			defer wg.Done()
 			testClientGet(t, &defaultClient, addr, 30)
 			testClientPost(t, &defaultClient, addr, 10)
-		}()
-	}
-	wg.Wait()
-}
-
-func TestHostClientGet(t *testing.T) {
-	addr := "./TestHostClientGet.unix"
-	s := startEchoServer(t, "unix", addr)
-	defer s.Stop()
-	c := createEchoClient(t, "unix", addr)
-
-	testHostClientGet(t, c, 100)
-}
-
-func TestHostClientPost(t *testing.T) {
-	addr := "./TestHostClientPost.unix"
-	s := startEchoServer(t, "unix", addr)
-	defer s.Stop()
-	c := createEchoClient(t, "unix", addr)
-
-	testHostClientPost(t, c, 100)
-}
-
-func TestHostClientConcurrent(t *testing.T) {
-	addr := "./TestHostClientConcurrent.unix"
-	s := startEchoServer(t, "unix", addr)
-	defer s.Stop()
-	c := createEchoClient(t, "unix", addr)
-
-	var wg sync.WaitGroup
-	for i := 0; i < 10; i++ {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			testHostClientGet(t, c, 30)
-			testHostClientPost(t, c, 10)
 		}()
 	}
 	wg.Wait()
