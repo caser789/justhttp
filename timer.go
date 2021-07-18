@@ -1,6 +1,7 @@
 package fasthttp
 
 import (
+	"sync"
 	"time"
 )
 
@@ -8,7 +9,6 @@ func initTimer(t *time.Timer, timeout time.Duration) *time.Timer {
 	if t == nil {
 		return time.NewTimer(timeout)
 	}
-
 	if t.Reset(timeout) {
 		panic("BUG: active timer trapped into initTimer()")
 	}
@@ -25,3 +25,20 @@ func stopTimer(t *time.Timer) {
 		}
 	}
 }
+
+func acquireTimer(timeout time.Duration) *time.Timer {
+	v := timerPool.Get()
+	if v == nil {
+		return time.NewTimer(timeout)
+	}
+	t := v.(*time.Timer)
+	initTimer(t, timeout)
+	return t
+}
+
+func releaseTimer(t *time.Timer) {
+	stopTimer(t)
+	timerPool.Put(t)
+}
+
+var timerPool sync.Pool
