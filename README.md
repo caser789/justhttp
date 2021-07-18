@@ -3,8 +3,6 @@
 Fast HTTP library for Go
 
 https://godoc.org/github.com/caser789/justhttp
-- [x] http client
-    - [ ] SessionClient with referer and cookies support
 - [x] Request cookie
 - [x] Limit max connection from the same IP
     - [x] connection pool
@@ -34,6 +32,8 @@ https://godoc.org/github.com/caser789/justhttp
     - [ ] Client
         - [x] LB among multiple upstream hosts
         - [x] Max duration for each keep-alive connection
+        - [x] SessionClient with referer and cookies support
+        - [x] pipeline requests
     - [x] Virtual hosting
 - Performance
     - [ ] Use sendfile syscall
