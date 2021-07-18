@@ -204,8 +204,9 @@ func testWorkerPoolPanicErrorMulti(t *testing.T) {
 			}
 			return nil
 		},
-		MaxWorkersCount: 1000,
-		Logger:          &customLogger{},
+		MaxWorkersCount:       1000,
+		Logger:                &customLogger{},
+		MaxIdleWorkerDuration: time.Millisecond,
 	}
 
 	for i := 0; i < 10; i++ {
