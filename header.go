@@ -18,6 +18,8 @@ import (
 // ResponseHeader instance MUST NOT be used from concurrently running
 // goroutines.
 type ResponseHeader struct {
+	noCopy noCopy
+
 	disableNormalizing bool
 	noHTTP11           bool
 	connectionClose    bool
@@ -43,6 +45,8 @@ type ResponseHeader struct {
 // RequestHeader instance MUST NOT be used from concurrently running
 // goroutines.
 type RequestHeader struct {
+	noCopy noCopy
+
 	disableNormalizing bool
 	noHTTP11           bool
 	connectionClose    bool

@@ -122,6 +122,8 @@ var defaultClient Client
 //
 // It is safe calling Client methods from concurrently running goroutines.
 type Client struct {
+	noCopy noCopy
+
 	// Client name. Used in User-Agent request header.
 	//
 	// Default client name is used if not set.
@@ -405,6 +407,8 @@ type DialFunc func(addr string) (net.Conn, error)
 //
 // It is safe calling HostClient methods from concurrently running goroutines.
 type HostClient struct {
+	noCopy noCopy
+
 	// Comma-separated list of upstream HTTP server host addresses,
 	// which are passed to Dial in round-robin manner.
 	//
