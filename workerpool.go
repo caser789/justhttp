@@ -35,8 +35,8 @@ type workerPool struct {
 }
 
 type workerChan struct {
-	t  time.Time
-	ch chan net.Conn
+	lastUseTime time.Time
+	ch          chan net.Conn
 }
 
 func (wp *workerPool) Start() {
@@ -81,10 +81,12 @@ const maxIdleWorkerDuration = 10 * time.Second
 
 func (wp *workerPool) clean() {
 	// Clean least recently used workers if they didn't serve connections
-	// for more than one second.
+	// for more than maxIdleWorkerDuration.
+	currentTime := time.Now()
+
 	wp.lock.Lock()
 	ready := wp.ready
-	for len(ready) > 1 && time.Since(ready[0].t) > maxIdleWorkerDuration {
+	for len(ready) > 1 && currentTime.Sub(ready[0].lastUseTime) > maxIdleWorkerDuration {
 		// notify the worker to stop.
 		ready[0].ch <- nil
 
@@ -162,7 +164,7 @@ func (wp *workerPool) getCh() *workerChan {
 }
 
 func (wp *workerPool) release(ch *workerChan) bool {
-	ch.t = time.Now()
+	ch.lastUseTime = time.Now()
 	wp.lock.Lock()
 	if wp.mustStop {
 		wp.lock.Unlock()
