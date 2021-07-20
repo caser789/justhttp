@@ -473,6 +473,52 @@ func (req *Request) ReleaseBody(size int) {
 	}
 }
 
+// SwapBody swaps response body with the given body and returns
+// the previous response body.
+//
+// It is forbidden to use the body passed to SwapBody after
+// the function returns.
+func (resp *Response) SwapBody(body []byte) []byte {
+	bb := resp.bodyBuffer()
+
+	if resp.bodyStream != nil {
+		bb.Reset()
+		_, err := copyZeroAlloc(bb, resp.bodyStream)
+		resp.closeBodyStream()
+		if err != nil {
+			bb.Reset()
+			bb.SetString(err.Error())
+		}
+	}
+
+	oldBody := bb.B
+	bb.B = body
+	return oldBody
+}
+
+// SwapBody swaps request body with the given body and returns
+// the previous request body.
+//
+// It is forbidden to use the body passed to SwapBody after
+// the function returns.
+func (req *Request) SwapBody(body []byte) []byte {
+	bb := req.bodyBuffer()
+
+	if req.bodyStream != nil {
+		bb.Reset()
+		_, err := copyZeroAlloc(bb, req.bodyStream)
+		req.closeBodyStream()
+		if err != nil {
+			bb.Reset()
+			bb.SetString(err.Error())
+		}
+	}
+
+	oldBody := bb.B
+	bb.B = body
+	return oldBody
+}
+
 // Body returns request body.
 func (req *Request) Body() []byte {
 	if req.bodyStream != nil {
@@ -1133,8 +1179,8 @@ func (resp *Response) WriteDeflateLevel(w *bufio.Writer, level int) error {
 
 func (resp *Response) gzipBody(level int) error {
 	if len(resp.Header.peek(strContentEncoding)) > 0 {
-		// it looks like the body is already compressed.
-		// do not compress it again
+		// It looks like the body is already compressed.
+		// Do not compress it again.
 		return nil
 	}
 
@@ -1173,6 +1219,8 @@ func (resp *Response) gzipBody(level int) error {
 
 func (resp *Response) deflateBody(level int) error {
 	if len(resp.Header.peek(strContentEncoding)) > 0 {
+		// It looks like the body is already compressed.
+		// Do not compress it again.
 		return nil
 	}
 
