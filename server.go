@@ -762,6 +762,7 @@ func (ctx *RequestCtx) IsPut() bool {
 	return ctx.Request.Header.IsPut()
 }
 
+// IsDelete returns true if request method is DELETE.
 func (ctx *RequestCtx) IsDelete() bool {
 	return ctx.Request.Header.IsDelete()
 }
@@ -1004,6 +1005,11 @@ func (ctx *RequestCtx) SetBodyStreamWriter(sw StreamWriter) {
 	ctx.Response.SetBodyStreamWriter(sw)
 }
 
+// IsBodyStream returns true if response body is set via SetBodyStream*.
+func (ctx *RequestCtx) IsBodyStream() bool {
+	return ctx.Response.IsBodyStream()
+}
+
 // Logger returns logger, which may be used for logging arbitrary
 // request-specific messages inside RequestHandler.
 //
@@ -1072,7 +1078,10 @@ func (ctx *RequestCtx) TimeoutErrorWithResponse(resp *Response) {
 	ctx.timeoutResponse = respCopy
 }
 
-// ListenAndServe serves HTTP requests from the given TCP addr.
+// ListenAndServe serves HTTP requests from the given TCP4 addr.
+//
+// Pass custom listener to Serve if you need listening on non-TCP4 media
+// such as IPv6.
 func (s *Server) ListenAndServe(addr string) error {
 	ln, err := net.Listen("tcp4", addr)
 	if err != nil {
@@ -1100,9 +1109,12 @@ func (s *Server) ListenAndServeUNIX(addr string, mode os.FileMode) error {
 	return s.Serve(ln)
 }
 
-// ListenAndServeTLS serves HTTPS requests from the given TCP addr.
+// ListenAndServeTLS serves HTTPS requests from the given TCP4 addr.
 //
 // certFile and keyFile are paths to TLS certificate and key files.
+//
+// Pass custom listener to Serve if you need listening on non-TCP4 media
+// such as IPv6.
 func (s *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
 	ln, err := net.Listen("tcp4", addr)
 	if err != nil {
@@ -1111,9 +1123,12 @@ func (s *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
 	return s.ServeTLS(ln, certFile, keyFile)
 }
 
-// ListenAndServeTLSEmbed serves HTTPS requests from the given TCP addr.
+// ListenAndServeTLSEmbed serves HTTPS requests from the given TCP4 addr.
 //
 // certData and keyData must contain valid TLS certificate and key data.
+//
+// Pass custom listener to Serve if you need listening on arbitrary media
+// such as IPv6.
 func (s *Server) ListenAndServeTLSEmbed(addr string, certData, keyData []byte) error {
 	ln, err := net.Listen("tcp4", addr)
 	if err != nil {
