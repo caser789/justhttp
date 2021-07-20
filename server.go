@@ -215,15 +215,15 @@ type Server struct {
 	//
 	// The server rejects requests with bodies exceeding this limit.
 	//
-	// By default request body size is unlimited.
+	// Request body size is limited by DefaultMaxRequestBodySize by default.
 	MaxRequestBodySize int
 
 	// Aggressively reduces memory usage at the cost of higher CPU usage
 	// if set to true.
 	//
 	// Try enabling this option only if the server consumes too much memory
-	// serving mostly idle keep-alive connections (more than 1M concurrent
-	// connections). This may reduce memory usage by up to 50%.
+	// serving mostly idle keep-alive connections. This may reduce memory
+	// usage by more than 50%.
 	//
 	// Aggressive memory usage reduction is disabled by default.
 	ReduceMemoryUsage bool
@@ -657,7 +657,7 @@ func (ctx *RequestCtx) Host() []byte {
 
 // QueryArgs returns query arguments from RequestURI.
 //
-// It doesn't return POST'ed arguments - use PostArge() for this.
+// It doesn't return POST'ed arguments - use PostArgs() for this.
 //
 // Returned arguments are valid until returning from RequestHandler.
 //
@@ -1399,6 +1399,10 @@ func nextConnID() uint64 {
 	return atomic.AddUint64(&globalConnID, 1)
 }
 
+// DefaultMaxRequestBodySize is the maximum request body size the server
+// reads by default.
+//
+// See Server.MaxRequestBodySize for details.
 const DefaultMaxRequestBodySize = 4 * 1024 * 1024
 
 func (s *Server) serveConn(c net.Conn) error {
@@ -1552,6 +1556,7 @@ func (s *Server) serveConn(c net.Conn) error {
 		if len(ctx.Response.Header.Server()) == 0 {
 			ctx.Response.Header.SetServerBytes(serverName)
 		}
+
 		if bw == nil {
 			bw = acquireWriter(ctx)
 		}
@@ -1665,7 +1670,6 @@ func (s *Server) updateWriteDeadline(c net.Conn, ctx *RequestCtx, lastDeadlineTi
 
 func hijackConnHandler(r io.Reader, c net.Conn, s *Server, h HijackHandler) {
 	hjc := s.acquireHijackConn(r, c)
-
 	h(hjc)
 
 	if br, ok := r.(*bufio.Reader); ok {
@@ -1812,11 +1816,15 @@ func (s *Server) acquireCtx(c net.Conn) *RequestCtx {
 	v := s.ctxPool.Get()
 	var ctx *RequestCtx
 	if v == nil {
-		v = &RequestCtx{
+		ctx = &RequestCtx{
 			s: s,
 		}
+		keepBodyBuffer := !s.ReduceMemoryUsage
+		ctx.Request.keepBodyBuffer = keepBodyBuffer
+		ctx.Response.keepBodyBuffer = keepBodyBuffer
+	} else {
+		ctx = v.(*RequestCtx)
 	}
-	ctx = v.(*RequestCtx)
 	ctx.c = c
 	return ctx
 }
