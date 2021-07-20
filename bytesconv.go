@@ -8,6 +8,7 @@ import (
 	"io"
 	"math"
 	"net"
+	"reflect"
 	"sync"
 	"time"
 	"unsafe"
@@ -358,6 +359,16 @@ func lowercaseBytes(b []byte) {
 // in the future go versions.
 func b2s(b []byte) string {
 	return *(*string)(unsafe.Pointer(&b))
+}
+
+func s2b(s string) []byte {
+	sh := (*reflect.StringHeader)(unsafe.Pointer(&s))
+	bh := reflect.SliceHeader{
+		Data: sh.Data,
+		Len:  sh.Len,
+		Cap:  sh.Len,
+	}
+	return *(*[]byte)(unsafe.Pointer(&bh))
 }
 
 // AppendQuotedArg appends url-encoded src to dst and returns appended dst.
