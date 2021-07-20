@@ -40,6 +40,10 @@ https://godoc.org/github.com/caser789/justhttp
     - [x] connection pool
         - [ ] server worker pool
     - [x] compress response
+    - [ ] TCP
+        - [ ] reuseport
+        - [ ] defer accept
+        - [ ] fastopen
 
 # Performance optimization tips for multi-core systems.
 
