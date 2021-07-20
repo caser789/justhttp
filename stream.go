@@ -5,6 +5,8 @@ import (
 	"io"
 	"runtime/debug"
 	"sync"
+
+	"github.com/caser789/justhttp/fasthttputil"
 )
 
 // StreamWriter must write data to w.
@@ -23,7 +25,9 @@ type StreamWriter func(w *bufio.Writer)
 //
 // See also Response.SetBodyWriter.
 func NewStreamReader(sw StreamWriter) io.ReadCloser {
-	pr, pw := io.Pipe()
+	pc := fasthttputil.NewPipeConns()
+	pw := pc.Conn1()
+	pr := pc.Conn2()
 
 	var bw *bufio.Writer
 	v := streamWriterBufPool.Get()
