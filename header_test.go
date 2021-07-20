@@ -10,6 +10,31 @@ import (
 	"testing"
 )
 
+func TestRequestHeaderSetCookieWithSpecialChars(t *testing.T) {
+	var h RequestHeader
+	h.Set("Cookie", "ID&14")
+	s := h.String()
+
+	if !strings.Contains(s, "Cookie: ID&14") {
+		t.Fatalf("Missing cookie in request header: [%s]", s)
+	}
+
+	var h1 RequestHeader
+	br := bufio.NewReader(bytes.NewBufferString(s))
+	if err := h1.Read(br); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	cookie := h1.Peek("Cookie")
+	if string(cookie) != "ID&14" {
+		t.Fatalf("unexpected cooke: %q. Expecting %q", cookie, "ID&14")
+	}
+
+	cookie = h1.Cookie("")
+	if string(cookie) != "ID&14" {
+		t.Fatalf("unexpected cooke: %q. Expecting %q", cookie, "ID&14")
+	}
+}
+
 func TestResponseHeaderDefaultStatusCode(t *testing.T) {
 	var h ResponseHeader
 	statusCode := h.StatusCode()
@@ -572,6 +597,9 @@ func TestRequestMultipartFormBoundary(t *testing.T) {
 
 	// boundary after other content-type params
 	testRequestMultipartFormBoundary(t, "POST / HTTP/1.1\r\nContent-Type: multipart/form-data;   foo=bar;   boundary=--aaabb  \r\n\r\n", "--aaabb")
+
+	// quoted boundary
+	testRequestMultipartFormBoundary(t, "POST / HTTP/1.1\r\nContent-Type: multipart/form-data; boundary=\"foobar\"\r\n\r\n", "foobar")
 
 	var h RequestHeader
 	h.SetMultipartFormBoundary("foobarbaz")
@@ -1261,6 +1289,38 @@ func TestRequestHeaderCookie(t *testing.T) {
 	}
 	if len(h.Cookie("привет")) > 0 {
 		t.Fatalf("Unexpected cookie found: %q", h.Cookie("привет"))
+	}
+}
+
+func TestRequestHeaderMethod(t *testing.T) {
+	// common http methods
+	testRequestHeaderMethod(t, "GET")
+	testRequestHeaderMethod(t, "POST")
+	testRequestHeaderMethod(t, "HEAD")
+	testRequestHeaderMethod(t, "DELETE")
+
+	// non-http methods
+	testRequestHeaderMethod(t, "foobar")
+	testRequestHeaderMethod(t, "ABC")
+}
+
+func testRequestHeaderMethod(t *testing.T, expectedMethod string) {
+	var h RequestHeader
+	h.SetMethod(expectedMethod)
+	m := h.Method()
+	if string(m) != expectedMethod {
+		t.Fatalf("unexpected method: %q. Expecting %q", m, expectedMethod)
+	}
+
+	s := h.String()
+	var h1 RequestHeader
+	br := bufio.NewReader(bytes.NewBufferString(s))
+	if err := h1.Read(br); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	m1 := h1.Method()
+	if string(m) != string(m1) {
+		t.Fatalf("unexpected method: %q. Expecting %q", m, m1)
 	}
 }
 
