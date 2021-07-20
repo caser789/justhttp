@@ -378,7 +378,7 @@ func (resp *Response) ResetBody() {
 func (resp *Response) ReleaseBody(size int) {
 	if cap(resp.body) > size {
 		resp.ResetBody()
-		resp.body = []byte{}
+		resp.body = nil
 	}
 }
 

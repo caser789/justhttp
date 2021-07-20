@@ -1070,7 +1070,7 @@ func (ctx *RequestCtx) TimeoutErrorWithResponse(resp *Response) {
 
 // ListenAndServe serves HTTP requests from the given TCP addr.
 func (s *Server) ListenAndServe(addr string) error {
-	ln, err := net.Listen("tcp", addr)
+	ln, err := net.Listen("tcp4", addr)
 	if err != nil {
 		return err
 	}
@@ -1100,7 +1100,7 @@ func (s *Server) ListenAndServeUNIX(addr string, mode os.FileMode) error {
 //
 // certFile and keyFile are paths to TLS certificate and key files.
 func (s *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
-	ln, err := net.Listen("tcp", addr)
+	ln, err := net.Listen("tcp4", addr)
 	if err != nil {
 		return err
 	}
@@ -1111,7 +1111,7 @@ func (s *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
 //
 // certData and keyData must contain valid TLS certificate and key data.
 func (s *Server) ListenAndServeTLSEmbed(addr string, certData, keyData []byte) error {
-	ln, err := net.Listen("tcp", addr)
+	ln, err := net.Listen("tcp4", addr)
 	if err != nil {
 		return err
 	}
