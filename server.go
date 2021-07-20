@@ -1389,12 +1389,18 @@ func nextConnID() uint64 {
 	return atomic.AddUint64(&globalConnID, 1)
 }
 
+const DefaultMaxRequestBodySize = 4 * 1024 * 1024
+
 func (s *Server) serveConn(c net.Conn) error {
 	serverName := s.getServerName()
 	connRequestNum := uint64(0)
 	connID := nextConnID()
 	currentTime := time.Now()
 	connTime := currentTime
+	maxRequestBodySize := s.MaxRequestBodySize
+	if maxRequestBodySize <= 0 {
+		maxRequestBodySize = DefaultMaxRequestBodySize
+	}
 
 	ctx := s.acquireCtx(c)
 	ctx.connTime = connTime
@@ -1437,7 +1443,7 @@ func (s *Server) serveConn(c net.Conn) error {
 				ctx.Request.Header.DisableNormalizing()
 				ctx.Response.Header.DisableNormalizing()
 			}
-			err = ctx.Request.readLimitBody(br, s.MaxRequestBodySize, s.GetOnly)
+			err = ctx.Request.readLimitBody(br, maxRequestBodySize, s.GetOnly)
 			if br.Buffered() == 0 || err != nil {
 				releaseReader(s, br)
 				br = nil
@@ -1473,7 +1479,7 @@ func (s *Server) serveConn(c net.Conn) error {
 			if br == nil {
 				br = acquireReader(ctx)
 			}
-			err = ctx.Request.ContinueReadBody(br, s.MaxRequestBodySize)
+			err = ctx.Request.ContinueReadBody(br, maxRequestBodySize)
 			if br.Buffered() == 0 || err != nil {
 				releaseReader(s, br)
 				br = nil
