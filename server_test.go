@@ -17,6 +17,38 @@ import (
 	"github.com/caser789/justhttp/fasthttputil"
 )
 
+func TestRequestCtxRedirect(t *testing.T) {
+	testRequestCtxRedirect(t, "http://qqq/", "", "http://qqq/")
+	testRequestCtxRedirect(t, "http://qqq/foo/bar?baz=111", "", "http://qqq/foo/bar?baz=111")
+	testRequestCtxRedirect(t, "http://qqq/foo/bar?baz=111", "#aaa", "http://qqq/foo/bar?baz=111#aaa")
+	testRequestCtxRedirect(t, "http://qqq/foo/bar?baz=111", "?abc=de&f", "http://qqq/foo/bar?abc=de&f")
+	testRequestCtxRedirect(t, "http://qqq/foo/bar?baz=111", "?abc=de&f#sf", "http://qqq/foo/bar?abc=de&f#sf")
+	testRequestCtxRedirect(t, "http://qqq/foo/bar?baz=111", "x.html", "http://qqq/foo/x.html")
+	testRequestCtxRedirect(t, "http://qqq/foo/bar?baz=111", "x.html?a=1", "http://qqq/foo/x.html?a=1")
+	testRequestCtxRedirect(t, "http://qqq/foo/bar?baz=111", "x.html#aaa=bbb&cc=ddd", "http://qqq/foo/x.html#aaa=bbb&cc=ddd")
+	testRequestCtxRedirect(t, "http://qqq/foo/bar?baz=111", "x.html?b=1#aaa=bbb&cc=ddd", "http://qqq/foo/x.html?b=1#aaa=bbb&cc=ddd")
+	testRequestCtxRedirect(t, "http://qqq/foo/bar?baz=111", "/x.html", "http://qqq/x.html")
+	testRequestCtxRedirect(t, "http://qqq/foo/bar?baz=111", "/x.html#aaa=bbb&cc=ddd", "http://qqq/x.html#aaa=bbb&cc=ddd")
+	testRequestCtxRedirect(t, "http://qqq/foo/bar?baz=111", "../x.html", "http://qqq/x.html")
+	testRequestCtxRedirect(t, "http://qqq/foo/bar?baz=111", "../../x.html", "http://qqq/x.html")
+	testRequestCtxRedirect(t, "http://qqq/foo/bar?baz=111", "./.././../x.html", "http://qqq/x.html")
+	testRequestCtxRedirect(t, "http://qqq/foo/bar?baz=111", "http://foo.bar/baz", "http://foo.bar/baz")
+	testRequestCtxRedirect(t, "http://qqq/foo/bar?baz=111", "https://foo.bar/baz", "https://foo.bar/baz")
+}
+
+func testRequestCtxRedirect(t *testing.T, origURL, redirectURL, expectedURL string) {
+	var ctx RequestCtx
+	var req Request
+	req.SetRequestURI(origURL)
+	ctx.Init(&req, nil, nil)
+
+	ctx.Redirect(redirectURL, StatusFound)
+	loc := ctx.Response.Header.Peek("Location")
+	if string(loc) != expectedURL {
+		t.Fatalf("unexpected redirect url %q. Expecting %q. origURL=%q, redirectURL=%q", loc, expectedURL, origURL, redirectURL)
+	}
+}
+
 func TestServerResponseServerHeader(t *testing.T) {
 	serverName := "foobar serv"
 
@@ -28,6 +60,9 @@ func TestServerResponseServerHeader(t *testing.T) {
 			} else {
 				ctx.WriteString("OK")
 			}
+
+			// make sure the server name is sent to the client after ctx.Response.Reset()
+			ctx.NotFound()
 		},
 		Name: serverName,
 	}
@@ -57,11 +92,14 @@ func TestServerResponseServerHeader(t *testing.T) {
 			t.Fatalf("unexpected error: %s", err)
 		}
 
-		if resp.StatusCode() != StatusOK {
-			t.Fatalf("unexpected status code: %d. Expecting %d", resp.StatusCode(), StatusOK)
+		if resp.StatusCode() != StatusNotFound {
+			t.Fatalf("unexpected status code: %d. Expecting %d", resp.StatusCode(), StatusNotFound)
 		}
-		if string(resp.Body()) != "OK" {
-			t.Fatalf("unexpected body: %q. Expecting %q", resp.Body(), "OK")
+		if string(resp.Body()) != "404 Page not found" {
+			t.Fatalf("unexpected body: %q. Expecting %q", resp.Body(), "404 Page not found")
+		}
+		if string(resp.Header.Server()) != serverName {
+			t.Fatalf("unexpected server header: %q. Expecting %q", resp.Header.Server(), serverName)
 		}
 		if err = c.Close(); err != nil {
 			t.Fatalf("unexpected error: %s", err)
