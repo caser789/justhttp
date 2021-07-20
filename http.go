@@ -375,6 +375,13 @@ func (resp *Response) ResetBody() {
 	resp.body = resp.body[:0]
 }
 
+func (resp *Response) ReleaseBody(size int) {
+	if cap(resp.body) > size {
+		resp.ResetBody()
+		resp.body = []byte{}
+	}
+}
+
 // Body returns request body.
 func (req *Request) Body() []byte {
 	if req.bodyStream != nil {
