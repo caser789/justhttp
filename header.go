@@ -518,6 +518,10 @@ func (h *RequestHeader) IsHead() bool {
 	return bytes.Equal(h.Method(), strHead)
 }
 
+func (h *RequestHeader) IsDelete() bool {
+	return bytes.Equal(h.Method(), strDelete)
+}
+
 // IsHTTP11 returns true if the request is HTTP/1.1.
 func (h *RequestHeader) IsHTTP11() bool {
 	return !h.noHTTP11
