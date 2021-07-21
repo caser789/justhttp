@@ -91,6 +91,8 @@ func (cc *LBClient) init() {
 			healthCheck: cc.HealthCheck,
 		})
 	}
+
+	cc.nextIdx = uint32(time.Now().UnixNano())
 }
 
 func (cc *LBClient) get() *lbClient {
