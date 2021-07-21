@@ -460,6 +460,9 @@ type DialFunc func(addr string) (net.Conn, error)
 // HostClient balances http requests among hosts listed in Addr.
 //
 // HostClient may be used for balancing load among multiple upstream hosts.
+// While multiple addresses passed to HostClient.Addr may be used for balancing
+// load among them, it would be better using LBClient instead, since HostClient
+// may unevenly balance load among upstream hosts.
 //
 // It is forbidden copying HostClient instances. Create new instances instead.
 //
@@ -468,7 +471,7 @@ type HostClient struct {
 	noCopy noCopy
 
 	// Comma-separated list of upstream HTTP server host addresses,
-	// which are passed to Dial in round-robin manner.
+	// which are passed to Dial in a round-robin manner.
 	//
 	// Each address may contain port if default dialer is used.
 	// For example,
@@ -964,15 +967,40 @@ var errorChPool sync.Pool
 // It is recommended obtaining req and resp via AcquireRequest
 // and AcquireResponse in performance-critical code.
 func (c *HostClient) Do(req *Request, resp *Response) error {
+	var err error
+	var retry bool
+	const maxAttempts = 5
+	attempts := 0
+
 	atomic.AddUint64(&c.pendingRequests, 1)
-	retry, err := c.do(req, resp)
-	if err != nil && retry && isIdempotent(req) {
-		_, err = c.do(req, resp)
+	for {
+		retry, err = c.do(req, resp)
+		if err == nil || !retry {
+			break
+		}
+
+		if !isIdempotent(req) {
+			// Retry non-idempotent requests if the server closes
+			// the connection before sending the response.
+			//
+			// This case is possible if the server closes the idle
+			// keep-alive connection on timeout.
+			//
+			// Apache and nginx usually do this.
+			if err != io.EOF {
+				break
+			}
+		}
+		attempts++
+		if attempts >= maxAttempts {
+			break
+		}
 	}
+	atomic.AddUint64(&c.pendingRequests, ^uint64(0))
+
 	if err == io.EOF {
 		err = ErrConnectionClosed
 	}
-	atomic.AddUint64(&c.pendingRequests, ^uint64(0))
 	return err
 }
 
@@ -1094,10 +1122,7 @@ func (c *HostClient) doNonNilReqResp(req *Request, resp *Response) (bool, error)
 	if err = resp.ReadLimitBody(br, c.MaxResponseBodySize); err != nil {
 		c.releaseReader(br)
 		c.closeConn(cc)
-		if err == io.EOF {
-			return true, err
-		}
-		return false, err
+		return true, err
 	}
 	c.releaseReader(br)
 
