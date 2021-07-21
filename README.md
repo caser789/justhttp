@@ -40,6 +40,7 @@ https://godoc.org/github.com/caser789/justhttp
     - [x] connection pool
         - [ ] server worker pool
     - [x] compress response
+    - [x] stackless writer
     - [ ] TCP
         - [ ] reuseport
         - [ ] defer accept
