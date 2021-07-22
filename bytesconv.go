@@ -361,6 +361,10 @@ func b2s(b []byte) string {
 	return *(*string)(unsafe.Pointer(&b))
 }
 
+// s2b converts string to a byte slice without memory allocation.
+//
+// Note it may break if string and/or slice header will change
+// in the future go versions.
 func s2b(s string) []byte {
 	sh := (*reflect.StringHeader)(unsafe.Pointer(&s))
 	bh := reflect.SliceHeader{
@@ -369,6 +373,13 @@ func s2b(s string) []byte {
 		Cap:  sh.Len,
 	}
 	return *(*[]byte)(unsafe.Pointer(&bh))
+}
+
+// AppendUnquotedArg appends url-decoded src to dst and returns appended dst.
+//
+// dst may point to src. In this case src will be overwritten.
+func AppendUnquotedArg(dst, src []byte) []byte {
+	return decodeArgAppend(dst, src, true)
 }
 
 // AppendQuotedArg appends url-encoded src to dst and returns appended dst.
