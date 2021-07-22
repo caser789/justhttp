@@ -340,6 +340,7 @@ func CompressHandler(h RequestHandler) RequestHandler {
 //     * CompressBestSpeed
 //     * CompressBestCompression
 //     * CompressDefaultCompression
+//     * CompressHuffmanOnly
 func CompressHandlerLevel(h RequestHandler, level int) RequestHandler {
 	return func(ctx *RequestCtx) {
 		h(ctx)
@@ -610,6 +611,8 @@ func (ctx *RequestCtx) ConnTime() time.Time {
 
 // ConnRequestNum returns request sequence number
 // for the current connection.
+//
+// Sequence starts with 1.
 func (ctx *RequestCtx) ConnRequestNum() uint64 {
 	return ctx.connRequestNum
 }

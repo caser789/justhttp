@@ -866,6 +866,9 @@ func (req *Request) ReadLimitBody(r *bufio.Reader, maxBodySize int) error {
 }
 
 func (req *Request) readLimitBody(r *bufio.Reader, maxBodySize int, getOnly bool) error {
+	// Do not reset the request here - the caller must reset it before
+	// calling this method.
+
 	err := req.Header.Read(r)
 	if err != nil {
 		return err
@@ -1135,6 +1138,7 @@ func (resp *Response) WriteGzip(w *bufio.Writer) error {
 //     * CompressBestSpeed
 //     * CompressBestCompression
 //     * CompressDefaultCompression
+//     * CompressHuffmanOnly
 //
 // The method gzips response body and sets 'Content-Encoding: gzip'
 // header before writing response to w.
@@ -1165,6 +1169,7 @@ func (resp *Response) WriteDeflate(w *bufio.Writer) error {
 //     * CompressBestSpeed
 //     * CompressBestCompression
 //     * CompressDefaultCompression
+//     * CompressHuffmanOnly
 //
 // The method deflates response body and sets 'Content-Encoding: deflate'
 // header before writing response to w.
@@ -1189,25 +1194,20 @@ func (resp *Response) gzipBody(level int) error {
 	if resp.bodyStream != nil {
 		bs := resp.bodyStream
 		resp.bodyStream = NewStreamReader(func(sw *bufio.Writer) {
-			zw := acquireGzipWriter(sw, level)
+			zw := acquireStacklessGzipWriter(sw, level)
 			fw := &flushWriter{
 				wf: zw,
 				bw: sw,
 			}
 			copyZeroAlloc(fw, bs)
-			releaseGzipWriter(zw)
+			releaseStacklessGzipWriter(zw, level)
 			if bsc, ok := bs.(io.Closer); ok {
 				bsc.Close()
 			}
 		})
 	} else {
 		w := responseBodyPool.Get()
-		zw := acquireGzipWriter(w, level)
-		_, err := zw.Write(resp.bodyBytes())
-		releaseGzipWriter(zw)
-		if err != nil {
-			return err
-		}
+		w.B = AppendGzipBytesLevel(w.B, resp.bodyBytes(), level)
 
 		// Hack: swap resp.body with w.
 		if resp.body != nil {
@@ -1231,25 +1231,20 @@ func (resp *Response) deflateBody(level int) error {
 	if resp.bodyStream != nil {
 		bs := resp.bodyStream
 		resp.bodyStream = NewStreamReader(func(sw *bufio.Writer) {
-			zw := acquireFlateWriter(sw, level)
+			zw := acquireStacklessDeflateWriter(sw, level)
 			fw := &flushWriter{
 				wf: zw,
 				bw: sw,
 			}
 			copyZeroAlloc(fw, bs)
-			releaseFlateWriter(zw)
+			releaseStacklessDeflateWriter(zw, level)
 			if bsc, ok := bs.(io.Closer); ok {
 				bsc.Close()
 			}
 		})
 	} else {
 		w := responseBodyPool.Get()
-		zw := acquireFlateWriter(w, level)
-		_, err := zw.Write(resp.bodyBytes())
-		releaseFlateWriter(zw)
-		if err != nil {
-			return err
-		}
+		w.B = AppendDeflateBytesLevel(w.B, resp.bodyBytes(), level)
 
 		// Hack: swap resp.body with w.
 		if resp.body != nil {
