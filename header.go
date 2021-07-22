@@ -263,6 +263,12 @@ func (h *RequestHeader) SetContentLength(contentLength int) {
 	}
 }
 
+func (h *ResponseHeader) isCompressibleContentType() bool {
+	contentType := h.ContentType()
+	return bytes.HasPrefix(contentType, strTextSlash) ||
+		bytes.HasPrefix(contentType, strApplicationSlash)
+}
+
 // ContentType returns Content-Type header value.
 func (h *ResponseHeader) ContentType() []byte {
 	contentType := h.contentType
@@ -946,6 +952,8 @@ func (h *ResponseHeader) SetCanonical(key, value []byte) {
 }
 
 // SetCookie sets the given response cookie.
+//
+// It is save re-using the cookie after the function returns.
 func (h *ResponseHeader) SetCookie(cookie *Cookie) {
 	h.cookies = setArgBytes(h.cookies, cookie.Key(), cookie.Cookie())
 }
@@ -1255,6 +1263,14 @@ func (h *ResponseHeader) tryRead(r *bufio.Reader, n int) error {
 		if n == 1 || err == io.EOF {
 			return io.EOF
 		}
+
+		// This is for go 1.6 bug. See https://github.com/golang/go/issues/14121 .
+		if err == bufio.ErrBufferFull {
+			return &ErrSmallBuffer{
+				error: fmt.Errorf("error when reading response headers: %s", errSmallBuffer),
+			}
+		}
+
 		return fmt.Errorf("error when reading response headers: %s", err)
 	}
 	b = mustPeekBuffered(r)
@@ -1318,6 +1334,14 @@ func (h *RequestHeader) tryRead(r *bufio.Reader, n int) error {
 		if n == 1 || err == io.EOF {
 			return io.EOF
 		}
+
+		// This is for go 1.6 bug. See https://github.com/golang/go/issues/14121 .
+		if err == bufio.ErrBufferFull {
+			return &ErrSmallBuffer{
+				error: fmt.Errorf("error when reading request headers: %s", errSmallBuffer),
+			}
+		}
+
 		return fmt.Errorf("error when reading request headers: %s", err)
 	}
 	b = mustPeekBuffered(r)
