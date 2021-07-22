@@ -852,7 +852,15 @@ func (ctx *RequestCtx) LocalAddr() net.Addr {
 //
 // Always returns non-nil result.
 func (ctx *RequestCtx) RemoteIP() net.IP {
-	x, ok := ctx.RemoteAddr().(*net.TCPAddr)
+	return addrToIP(ctx.RemoteAddr())
+}
+
+func (ctx *RequestCtx) LocalIP() net.IP {
+	return addrToIP(ctx.LocalAddr())
+}
+
+func addrToIP(addr net.Addr) net.IP {
+	x, ok := addr.(*net.TCPAddr)
 	if !ok {
 		return net.IPv4zero
 	}
