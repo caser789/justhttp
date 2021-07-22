@@ -292,6 +292,15 @@ func visitArgs(args []argsKV, f func(k, v []byte)) {
 	}
 }
 
+func (a *Args) GetBool(key string) bool {
+	switch string(a.Peek(key)) {
+	case "1", "y", "yes":
+		return true
+	default:
+		return false
+	}
+}
+
 func copyArgs(dst, src []argsKV) []argsKV {
 	if cap(dst) < len(src) {
 		tmp := make([]argsKV, len(src))
