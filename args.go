@@ -285,19 +285,23 @@ func (a *Args) GetUfloatOrZero(key string) float64 {
 	return f
 }
 
-func visitArgs(args []argsKV, f func(k, v []byte)) {
-	for i, n := 0, len(args); i < n; i++ {
-		kv := &args[i]
-		f(kv.key, kv.value)
-	}
-}
-
+// GetBool returns boolean value for the given key.
+//
+// true is returned for '1', 'y' and 'yes' values,
+// otherwise false is returned.
 func (a *Args) GetBool(key string) bool {
 	switch string(a.Peek(key)) {
 	case "1", "y", "yes":
 		return true
 	default:
 		return false
+	}
+}
+
+func visitArgs(args []argsKV, f func(k, v []byte)) {
+	for i, n := 0, len(args); i < n; i++ {
+		kv := &args[i]
+		f(kv.key, kv.value)
 	}
 }
 
@@ -424,15 +428,15 @@ func (s *argsScanner) next(kv *argsKV) bool {
 		case '=':
 			if isKey {
 				isKey = false
-				kv.key = decodeArg(kv.key, s.b[:i], true)
+				kv.key = decodeArgAppend(kv.key[:0], s.b[:i], true)
 				k = i + 1
 			}
 		case '&':
 			if isKey {
-				kv.key = decodeArg(kv.key, s.b[:i], true)
+				kv.key = decodeArgAppend(kv.key[:0], s.b[:i], true)
 				kv.value = kv.value[:0]
 			} else {
-				kv.value = decodeArg(kv.value, s.b[k:i], true)
+				kv.value = decodeArgAppend(kv.value[:0], s.b[k:i], true)
 			}
 			s.b = s.b[i+1:]
 			return true
@@ -440,17 +444,13 @@ func (s *argsScanner) next(kv *argsKV) bool {
 	}
 
 	if isKey {
-		kv.key = decodeArg(kv.key, s.b, true)
+		kv.key = decodeArgAppend(kv.key[:0], s.b, true)
 		kv.value = kv.value[:0]
 	} else {
-		kv.value = decodeArg(kv.value, s.b[k:], true)
+		kv.value = decodeArgAppend(kv.value[:0], s.b[k:], true)
 	}
 	s.b = s.b[len(s.b):]
 	return true
-}
-
-func decodeArg(dst, src []byte, decodePlus bool) []byte {
-	return decodeArgAppend(dst[:0], src, decodePlus)
 }
 
 func decodeArgAppend(dst, src []byte, decodePlus bool) []byte {
