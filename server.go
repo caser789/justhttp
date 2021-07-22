@@ -1476,8 +1476,8 @@ func (s *Server) serveConn(c net.Conn) error {
 			}
 		} else {
 			br, err = acquireByteReader(&ctx)
-			ctx.Request.isTLS = isTLS
 		}
+		ctx.Request.isTLS = isTLS
 
 		if err == nil {
 			if s.DisableHeaderNamesNormalizing {
