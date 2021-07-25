@@ -767,7 +767,11 @@ func doRequestFollowRedirects(req *Request, dst []byte, url string, c clientDoer
 			break
 		}
 		statusCode = resp.Header.StatusCode()
-		if statusCode != StatusMovedPermanently && statusCode != StatusFound && statusCode != StatusSeeOther {
+		if statusCode != StatusMovedPermanently &&
+			statusCode != StatusFound &&
+			statusCode != StatusSeeOther &&
+			statusCode != StatusTemporaryRedirect &&
+			statusCode != StatusPermanentRedirect {
 			break
 		}
 
@@ -1079,9 +1083,6 @@ func (c *HostClient) doNonNilReqResp(req *Request, resp *Response) (bool, error)
 	}
 	bw := c.acquireWriter(conn)
 	err = req.Write(bw)
-	if len(userAgentOld) == 0 {
-		req.Header.userAgent = userAgentOld
-	}
 
 	if resetConnection {
 		req.Header.ResetConnectionClose()

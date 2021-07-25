@@ -1547,7 +1547,7 @@ func (s *Server) serveConn(c net.Conn) error {
 
 		// 'Expect: 100-continue' request handling.
 		// See http://www.w3.org/Protocols/rfc2616/rfc2616-sec8.html for details.
-		if !ctx.Request.Header.noBody() && ctx.Request.MayContinue() {
+		if !ctx.Request.Header.ignoreBody() && ctx.Request.MayContinue() {
 			// Send 'HTTP/1.1 100 Continue' response.
 			if bw == nil {
 				bw = acquireWriter(ctx)
@@ -1581,7 +1581,6 @@ func (s *Server) serveConn(c net.Conn) error {
 		ctx.Response.Header.SetServerBytes(serverName)
 		ctx.connID = connID
 		ctx.connRequestNum = connRequestNum
-		ctx.connTime = connTime
 		ctx.time = currentTime
 		s.Handler(ctx)
 
