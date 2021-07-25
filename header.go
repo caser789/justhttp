@@ -2062,7 +2062,7 @@ func hasHeaderValue(s, value []byte) bool {
 	var vs headerValueScanner
 	vs.b = s
 	for vs.next() {
-		if bytes.Equal(vs.value, value) {
+		if caseInsensitiveCompare(vs.value, value) {
 			return true
 		}
 	}

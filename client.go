@@ -188,6 +188,11 @@ type Client struct {
 	// after DefaultMaxIdleConnDuration.
 	MaxIdleConnDuration time.Duration
 
+	// Maximum number of attempts for idempotent calls
+	//
+	// DefaultMaxIdemponentCallAttempts is used if not set.
+	MaxIdemponentCallAttempts int
+
 	// Per-connection buffer size for responses' reading.
 	// This also limits the maximum header size.
 	//
@@ -400,6 +405,7 @@ func (c *Client) Do(req *Request, resp *Response) error {
 			TLSConfig:                     c.TLSConfig,
 			MaxConns:                      c.MaxConnsPerHost,
 			MaxIdleConnDuration:           c.MaxIdleConnDuration,
+			MaxIdemponentCallAttempts:     c.MaxIdemponentCallAttempts,
 			ReadBufferSize:                c.ReadBufferSize,
 			WriteBufferSize:               c.WriteBufferSize,
 			ReadTimeout:                   c.ReadTimeout,
@@ -969,9 +975,23 @@ func clientDoDeadline(req *Request, resp *Response, deadline time.Time, c client
 	// Without this 'hack' the load on slow host could exceed MaxConns*
 	// concurrent requests, since timed out requests on client side
 	// usually continue execution on the host.
-	go func() {
-		ch <- c.Do(reqCopy, respCopy)
 
+	var cleanup int32
+	go func() {
+		errDo := c.Do(reqCopy, respCopy)
+		if atomic.LoadInt32(&cleanup) == 1 {
+			ReleaseResponse(respCopy)
+			ReleaseRequest(reqCopy)
+			errorChPool.Put(chv)
+		} else {
+			ch <- errDo
+		}
+	}()
+
+	tc := acquireTimer(timeout)
+	var err error
+	select {
+	case err = <-ch:
 		if resp != nil {
 			respCopy.copyToSkipBody(resp)
 			swapResponseBody(resp, respCopy)
@@ -980,14 +1000,8 @@ func clientDoDeadline(req *Request, resp *Response, deadline time.Time, c client
 		ReleaseResponse(respCopy)
 		ReleaseRequest(reqCopy)
 		errorChPool.Put(chv)
-	}()
-
-	tc := acquireTimer(timeout)
-	var err error
-	select {
-	case err = <-ch:
-
 	case <-tc.C:
+		atomic.StoreInt32(&cleanup, 1)
 		err = ErrTimeout
 	}
 	releaseTimer(tc)
@@ -1345,7 +1359,6 @@ var clientConnPool sync.Pool
 
 func (c *HostClient) releaseConn(cc *clientConn) {
 	cc.lastUseTime = time.Now()
-
 	c.connsLock.Lock()
 	c.conns = append(c.conns, cc)
 	c.connsLock.Unlock()
