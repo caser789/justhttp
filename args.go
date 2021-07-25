@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"sync"
+
+	"github.com/valyala/bytebufferpool"
 )
 
 // AcquireArgs returns an empty Args object from the pool.
@@ -243,10 +245,10 @@ func (a *Args) GetUint(key string) (int, error) {
 
 // SetUint sets uint value for the given key.
 func (a *Args) SetUint(key string, value int) {
-	bb := AcquireByteBuffer()
+	bb := bytebufferpool.Get()
 	bb.B = AppendUint(bb.B[:0], value)
 	a.SetBytesV(key, bb.B)
-	ReleaseByteBuffer(bb)
+	bytebufferpool.Put(bb)
 }
 
 // SetUintBytes sets uint value for the given key.
@@ -463,16 +465,16 @@ func decodeArgAppend(dst, src []byte) []byte {
 	}
 
 	// slow path
-	for i, n := 0, len(src); i < n; i++ {
+	for i := 0; i < len(src); i++ {
 		c := src[i]
 		if c == '%' {
-			if i+2 >= n {
+			if i+2 >= len(src) {
 				return append(dst, src[i:]...)
 			}
 			x2 := hex2intTable[src[i+2]]
 			x1 := hex2intTable[src[i+1]]
 			if x1 == 16 || x2 == 16 {
-				dst = append(dst, c)
+				dst = append(dst, '%')
 			} else {
 				dst = append(dst, x1<<4|x2)
 				i += 2
@@ -489,7 +491,7 @@ func decodeArgAppend(dst, src []byte) []byte {
 // decodeArgAppendNoPlus is almost identical to decodeArgAppend, but it doesn't
 // substitute '+' with ' '.
 //
-// The function is copy-pasted from decodeArgAppend due to the preformance
+// The function is copy-pasted from decodeArgAppend due to the performance
 // reasons only.
 func decodeArgAppendNoPlus(dst, src []byte) []byte {
 	if bytes.IndexByte(src, '%') < 0 {
@@ -498,16 +500,16 @@ func decodeArgAppendNoPlus(dst, src []byte) []byte {
 	}
 
 	// slow path
-	for i, n := 0, len(src); i < n; i++ {
+	for i := 0; i < len(src); i++ {
 		c := src[i]
 		if c == '%' {
-			if i+2 >= n {
+			if i+2 >= len(src) {
 				return append(dst, src[i:]...)
 			}
 			x2 := hex2intTable[src[i+2]]
 			x1 := hex2intTable[src[i+1]]
 			if x1 == 16 || x2 == 16 {
-				dst = append(dst, c)
+				dst = append(dst, '%')
 			} else {
 				dst = append(dst, x1<<4|x2)
 				i += 2
