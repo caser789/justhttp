@@ -280,6 +280,10 @@ type Server struct {
 	writerPool     sync.Pool
 	hijackConnPool sync.Pool
 	bytePool       sync.Pool
+
+	ln   net.Listener
+	wg   sync.WaitGroup
+	stop int32
 }
 
 // TimeoutHandler creates RequestHandler, which returns StatusRequestTimeout
@@ -1294,6 +1298,12 @@ func (s *Server) Serve(ln net.Listener) error {
 	var c net.Conn
 	var err error
 
+	s.ln = ln
+	defer func() {
+		s.ln = nil
+	}()
+	atomic.StoreInt32(&s.stop, 0)
+
 	maxWorkersCount := s.getConcurrency()
 	s.concurrencyCh = make(chan struct{}, maxWorkersCount)
 	wp := &workerPool{
@@ -1312,7 +1322,9 @@ func (s *Server) Serve(ln net.Listener) error {
 			}
 			return err
 		}
+		s.wg.Add(1)
 		if !wp.Serve(c) {
+			s.wg.Done()
 			s.writeFastError(c, StatusServiceUnavailable,
 				"The connection cannot be served because Server.Concurrency limit exceeded")
 			c.Close()
@@ -1332,6 +1344,17 @@ func (s *Server) Serve(ln net.Listener) error {
 		}
 		c = nil
 	}
+}
+
+func (s *Server) Shutdown() error {
+	if s.ln != nil {
+		if err := s.ln.Close(); err != nil {
+			return err
+		}
+	}
+	atomic.StoreInt32(&s.stop, 1)
+	s.wg.Wait()
+	return nil
 }
 
 func acceptConn(s *Server, ln net.Listener, lastPerIPErrorTime *time.Time) (net.Conn, error) {
@@ -1435,6 +1458,7 @@ func (s *Server) ServeConn(c net.Conn) error {
 		return ErrConcurrencyLimit
 	}
 
+	s.wg.Add(1)
 	err := s.serveConn(c)
 
 	atomic.AddUint32(&s.concurrency, ^uint32(0))
@@ -1473,6 +1497,7 @@ func nextConnID() uint64 {
 const DefaultMaxRequestBodySize = 4 * 1024 * 1024
 
 func (s *Server) serveConn(c net.Conn) error {
+	defer s.wg.Done()
 	serverName := s.getServerName()
 	connRequestNum := uint64(0)
 	connID := nextConnID()
@@ -1501,6 +1526,10 @@ func (s *Server) serveConn(c net.Conn) error {
 		isHTTP11        bool
 	)
 	for {
+		if atomic.LoadInt32(&s.stop) == 1 {
+			err = nil
+			break
+		}
 		connRequestNum++
 		ctx.time = currentTime
 
