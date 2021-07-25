@@ -43,6 +43,9 @@ func testResponseBodyStreamDeflate(t *testing.T, body []byte, bodySize int) {
 	if err := r.WriteDeflate(bw); err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
+	if err := bw.Flush(); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
 
 	var resp Response
 	br := bufio.NewReader(w)
@@ -66,6 +69,9 @@ func testResponseBodyStreamGzip(t *testing.T, body []byte, bodySize int) {
 	w := &bytes.Buffer{}
 	bw := bufio.NewWriter(w)
 	if err := r.WriteGzip(bw); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if err := bw.Flush(); err != nil {
 		t.Fatalf("unexpected error: %s", err)
 	}
 
@@ -1366,7 +1372,7 @@ func TestResponseSuccess(t *testing.T) {
 
 	// response with missing server
 	testResponseSuccess(t, 500, "aaa", "", "aaadfsd",
-		500, "aaa", string(defaultServerName))
+		500, "aaa", "")
 
 	// empty body
 	testResponseSuccess(t, 200, "bbb", "qwer", "",

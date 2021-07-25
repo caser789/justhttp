@@ -265,6 +265,15 @@ type Server struct {
 	//     * cONTENT-lenGTH -> Content-Length
 	DisableHeaderNamesNormalizing bool
 
+	// NoDefaultServerHeader, when set to true, causes the default Server header
+	// to be excluded from the Response.
+	//
+	// The default Server header value is the value of the Name field or an
+	// internal default value in its absence. With this option set to true,
+	// the only time a Server header will be sent is if a non-zero length
+	// value is explicitly provided during a request.
+	NoDefaultServerHeader bool
+
 	// Logger, which is used by RequestCtx.Logger().
 	//
 	// By default standard logger from log package is used.
@@ -281,7 +290,9 @@ type Server struct {
 	hijackConnPool sync.Pool
 	bytePool       sync.Pool
 
-	ln   net.Listener
+	// We need to know our listener so we can close it in Shutdown().
+	ln net.Listener
+
 	wg   sync.WaitGroup
 	stop int32
 }
@@ -602,18 +613,13 @@ func (ctx *RequestCtx) ConnID() uint64 {
 	return ctx.connID
 }
 
-// Time returns RequestHandler call time truncated to the nearest second.
-//
-// Call time.Now() at the beginning of RequestHandler in order to obtain
-// precise RequestHandler call time.
+// Time returns RequestHandler call time.
 func (ctx *RequestCtx) Time() time.Time {
 	return ctx.time
 }
 
-// ConnTime returns the time server starts serving the connection
+// ConnTime returns the time the server started serving the connection
 // the current request came from.
-//
-// The returned time is truncated to the nearest second.
 func (ctx *RequestCtx) ConnTime() time.Time {
 	return ctx.connTime
 }
@@ -1300,8 +1306,10 @@ func (s *Server) Serve(ln net.Listener) error {
 
 	s.ln = ln
 	defer func() {
+		// Don't keep a reference to the listener if we don't need to.
 		s.ln = nil
 	}()
+
 	atomic.StoreInt32(&s.stop, 0)
 
 	maxWorkersCount := s.getConcurrency()
@@ -1346,6 +1354,13 @@ func (s *Server) Serve(ln net.Listener) error {
 	}
 }
 
+// Shutdown gracefully shuts down the server without interrupting any active connections.
+// Shutdown works by first closing all open listeners and then waiting indefinitely for all connections to return to idle and then shut down.
+//
+// When Shutdown is called, Serve, ListenAndServe, and ListenAndServeTLS immediately return nil.
+// Make sure the program doesn't exit and waits instead for Shutdown to return.
+//
+// Shutdown does not close keepalive connections so its recommended to set ReadTimeout to something else than 0.
 func (s *Server) Shutdown() error {
 	if s.ln != nil {
 		if err := s.ln.Close(); err != nil {
@@ -1353,6 +1368,9 @@ func (s *Server) Shutdown() error {
 		}
 	}
 	atomic.StoreInt32(&s.stop, 1)
+	// Closing the listener will make Serve() call Stop on the worker pool.
+	// Setting .stop to 1 will make serveConn() break out of its loop.
+	// Now we just have to wait until all workers are done.
 	s.wg.Wait()
 	return nil
 }
@@ -1459,6 +1477,7 @@ func (s *Server) ServeConn(c net.Conn) error {
 	}
 
 	s.wg.Add(1)
+
 	err := s.serveConn(c)
 
 	atomic.AddUint32(&s.concurrency, ^uint32(0))
@@ -1498,7 +1517,11 @@ const DefaultMaxRequestBodySize = 4 * 1024 * 1024
 
 func (s *Server) serveConn(c net.Conn) error {
 	defer s.wg.Done()
-	serverName := s.getServerName()
+
+	var serverName []byte
+	if !s.NoDefaultServerHeader {
+		serverName = s.getServerName()
+	}
 	connRequestNum := uint64(0)
 	connID := nextConnID()
 	currentTime := time.Now()
@@ -1530,6 +1553,7 @@ func (s *Server) serveConn(c net.Conn) error {
 			err = nil
 			break
 		}
+
 		connRequestNum++
 		ctx.time = currentTime
 
@@ -1569,7 +1593,7 @@ func (s *Server) serveConn(c net.Conn) error {
 			if err == io.EOF {
 				err = nil
 			} else {
-				bw = writeErrorResponse(bw, ctx, err)
+				bw = writeErrorResponse(bw, ctx, serverName, err)
 			}
 			break
 		}
@@ -1599,7 +1623,7 @@ func (s *Server) serveConn(c net.Conn) error {
 				br = nil
 			}
 			if err != nil {
-				bw = writeErrorResponse(bw, ctx, err)
+				bw = writeErrorResponse(bw, ctx, serverName, err)
 				break
 			}
 		}
@@ -1607,7 +1631,9 @@ func (s *Server) serveConn(c net.Conn) error {
 		connectionClose = s.DisableKeepalive || ctx.Request.Header.connectionCloseFast()
 		isHTTP11 = ctx.Request.Header.IsHTTP11()
 
-		ctx.Response.Header.SetServerBytes(serverName)
+		if serverName != nil {
+			ctx.Response.Header.SetServerBytes(serverName)
+		}
 		ctx.connID = connID
 		ctx.connRequestNum = connRequestNum
 		ctx.time = currentTime
@@ -1653,7 +1679,7 @@ func (s *Server) serveConn(c net.Conn) error {
 			ctx.Response.Header.SetCanonical(strConnection, strKeepAlive)
 		}
 
-		if len(ctx.Response.Header.Server()) == 0 {
+		if serverName != nil && len(ctx.Response.Header.Server()) == 0 {
 			ctx.Response.Header.SetServerBytes(serverName)
 		}
 
@@ -2026,21 +2052,30 @@ func (s *Server) getServerName() []byte {
 
 func (s *Server) writeFastError(w io.Writer, statusCode int, msg string) {
 	w.Write(statusLine(statusCode))
+
+	server := ""
+	if !s.NoDefaultServerHeader {
+		server = fmt.Sprintf("Server: %s\r\n", s.getServerName())
+	}
+
 	fmt.Fprintf(w, "Connection: close\r\n"+
-		"Server: %s\r\n"+
+		server+
 		"Date: %s\r\n"+
 		"Content-Type: text/plain\r\n"+
 		"Content-Length: %d\r\n"+
 		"\r\n"+
 		"%s",
-		s.getServerName(), serverDate.Load(), len(msg), msg)
+		serverDate.Load(), len(msg), msg)
 }
 
-func writeErrorResponse(bw *bufio.Writer, ctx *RequestCtx, err error) *bufio.Writer {
+func writeErrorResponse(bw *bufio.Writer, ctx *RequestCtx, serverName []byte, err error) *bufio.Writer {
 	if _, ok := err.(*ErrSmallBuffer); ok {
 		ctx.Error("Too big request header", StatusRequestHeaderFieldsTooLarge)
 	} else {
 		ctx.Error("Error when parsing request", StatusBadRequest)
+	}
+	if serverName != nil {
+		ctx.Response.Header.SetServerBytes(serverName)
 	}
 	ctx.SetConnectionClose()
 	if bw == nil {
