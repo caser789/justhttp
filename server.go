@@ -150,6 +150,9 @@ type Server struct {
 	noCopy noCopy
 
 	// Handler for processing incoming requests.
+	//
+	// Take into account that no `panic` recovery is done by `fasthttp` (thus any `panic` will take down the entire server).
+	// Instead the user should use `recover` to handle these situations.
 	Handler RequestHandler
 
 	// ErrorHandler for returning a response in case of an error while receiving or parsing the request.
@@ -1838,7 +1841,7 @@ func (s *Server) serveConn(c net.Conn) error {
 				// If we read any bytes off the wire, we're active.
 				s.setState(c, StateActive)
 			}
-			if br.Buffered() == 0 || err != nil {
+			if (s.ReduceMemoryUsage && br.Buffered() == 0) || err != nil {
 				releaseReader(s, br)
 				br = nil
 			}
@@ -1851,6 +1854,11 @@ func (s *Server) serveConn(c net.Conn) error {
 			if err == io.EOF {
 				err = nil
 			} else if connRequestNum > 1 && err == errNothingRead {
+				// This is not the first request and we haven't read a single byte
+				// of a new request yet. This means it's just a keep-alive connection
+				// closing down either because the remote closed it or because
+				// or a read timeout on our side. Either way just close the connection
+				// and don't return any error response.
 				err = nil
 			} else {
 				bw = s.writeErrorResponse(bw, ctx, serverName, err)
@@ -1867,10 +1875,12 @@ func (s *Server) serveConn(c net.Conn) error {
 			}
 			bw.Write(strResponseContinue)
 			err = bw.Flush()
-			releaseWriter(s, bw)
-			bw = nil
 			if err != nil {
 				break
+			}
+			if s.ReduceMemoryUsage {
+				releaseWriter(s, bw)
+				bw = nil
 			}
 
 			// Read request body.
@@ -1878,7 +1888,7 @@ func (s *Server) serveConn(c net.Conn) error {
 				br = acquireReader(ctx)
 			}
 			err = ctx.Request.ContinueReadBody(br, maxRequestBodySize)
-			if br.Buffered() == 0 || err != nil {
+			if (s.ReduceMemoryUsage && br.Buffered() == 0) || err != nil {
 				releaseReader(s, br)
 				br = nil
 			}
@@ -1948,16 +1958,12 @@ func (s *Server) serveConn(c net.Conn) error {
 			break
 		}
 
-		if br == nil || connectionClose {
-			err = bw.Flush()
-			releaseWriter(s, bw)
-			bw = nil
-			if err != nil {
-				break
-			}
-			if connectionClose {
-				break
-			}
+		err = bw.Flush()
+		if err != nil {
+			break
+		}
+		if connectionClose {
+			break
 		}
 
 		if hijackHandler != nil {
