@@ -1715,6 +1715,10 @@ func (s *Server) getConcurrency() int {
 	return n
 }
 
+func (s *Server) GetCurrentConcurrency() uint32 {
+	return s.concurrency
+}
+
 var globalConnID uint64
 
 func nextConnID() uint64 {
