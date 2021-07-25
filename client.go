@@ -1177,7 +1177,8 @@ func (c *HostClient) doNonNilReqResp(req *Request, resp *Response) (bool, error)
 	if err = resp.ReadLimitBody(br, c.MaxResponseBodySize); err != nil {
 		c.releaseReader(br)
 		c.closeConn(cc)
-		return true, err
+		retry := err != ErrBodyTooLarge
+		return retry, err
 	}
 	c.releaseReader(br)
 
