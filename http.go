@@ -279,6 +279,8 @@ func (w *requestBodyWriter) Write(p []byte) (int, error) {
 }
 
 // Body returns response body.
+//
+// The returned body is valid until the response modification.
 func (resp *Response) Body() []byte {
 	if resp.bodyStream != nil {
 		bodyBuf := resp.bodyBuffer()
@@ -520,6 +522,8 @@ func (req *Request) SwapBody(body []byte) []byte {
 }
 
 // Body returns request body.
+//
+// The returned body is valid until the request modification.
 func (req *Request) Body() []byte {
 	if req.bodyStream != nil {
 		bodyBuf := req.bodyBuffer()
@@ -718,7 +722,7 @@ func marshalMultipartForm(f *multipart.Form, boundary string) ([]byte, error) {
 // boundary to w.
 func WriteMultipartForm(w io.Writer, f *multipart.Form, boundary string) error {
 	// Do not care about memory allocations here, since multipart
-	// form processing is slooow.
+	// form processing is slow.
 	if len(boundary) == 0 {
 		panic("BUG: form boundary cannot be empty")
 	}
@@ -1675,14 +1679,21 @@ func parseChunkSize(r *bufio.Reader) (int, error) {
 	if err != nil {
 		return -1, err
 	}
+	for {
+		c, err := r.ReadByte()
+		if err != nil {
+			return -1, fmt.Errorf("cannot read '\r' char at the end of chunk size: %s", err)
+		}
+		// Skip any trailing whitespace after chunk size.
+		if c == ' ' {
+			continue
+		}
+		if c != '\r' {
+			return -1, fmt.Errorf("unexpected char %q at the end of chunk size. Expected %q", c, '\r')
+		}
+		break
+	}
 	c, err := r.ReadByte()
-	if err != nil {
-		return -1, fmt.Errorf("cannot read '\r' char at the end of chunk size: %s", err)
-	}
-	if c != '\r' {
-		return -1, fmt.Errorf("unexpected char %q at the end of chunk size. Expected %q", c, '\r')
-	}
-	c, err = r.ReadByte()
 	if err != nil {
 		return -1, fmt.Errorf("cannot read '\n' char at the end of chunk size: %s", err)
 	}
