@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"io"
+	"sort"
 	"sync"
 
 	"github.com/valyala/bytebufferpool"
@@ -113,6 +114,19 @@ func (a *Args) String() string {
 func (a *Args) QueryString() []byte {
 	a.buf = a.AppendBytes(a.buf[:0])
 	return a.buf
+}
+
+// Sort sorts Args by key and then value using 'f' as comparison function.
+//
+// For example args.Sort(bytes.Compare)
+func (a *Args) Sort(f func(x, y []byte) int) {
+	sort.SliceStable(a.args, func(i, j int) bool {
+		n := f(a.args[i].key, a.args[j].key)
+		if n == 0 {
+			return f(a.args[i].value, a.args[j].value) == -1
+		}
+		return n == -1
+	})
 }
 
 // AppendBytes appends query string to dst and returns the extended dst.
