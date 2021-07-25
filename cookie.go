@@ -280,7 +280,10 @@ func (c *Cookie) ParseBytes(src []byte) error {
 			v := b2s(kv.value)
 			exptime, err := time.ParseInLocation(time.RFC1123, v, time.UTC)
 			if err != nil {
-				return err
+				exptime, err = time.Parse("Mon, 02-Jan-2006 15:04:05 MST", v)
+				if err != nil {
+					return err
+				}
 			}
 			c.expire = exptime
 		case "domain":

@@ -16,6 +16,8 @@ import (
 	"time"
 )
 
+var errNoCertOrKeyProvided = errors.New("Cert or key has not provided")
+
 // ServeConn serves HTTP requests from the given connection
 // using the given handler.
 //
@@ -274,10 +276,17 @@ type Server struct {
 	// value is explicitly provided during a request.
 	NoDefaultServerHeader bool
 
+	// ConnState specifies an optional callback function that is
+	// called when a client connection changes state. See the
+	// ConnState type and associated constants for details.
+	ConnState func(net.Conn, ConnState)
+
 	// Logger, which is used by RequestCtx.Logger().
 	//
 	// By default standard logger from log package is used.
 	Logger Logger
+
+	tlsConfig *tls.Config
 
 	concurrency      uint32
 	concurrencyCh    chan struct{}
@@ -1220,6 +1229,9 @@ func (s *Server) ListenAndServeUNIX(addr string, mode os.FileMode) error {
 //
 // Pass custom listener to Serve if you need listening on non-TCP4 media
 // such as IPv6.
+//
+// If the certFile or keyFile has not been provided to the server structure,
+// the function will use the previously added TLS configuration.
 func (s *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
 	ln, err := net.Listen("tcp4", addr)
 	if err != nil {
@@ -1234,6 +1246,9 @@ func (s *Server) ListenAndServeTLS(addr, certFile, keyFile string) error {
 //
 // Pass custom listener to Serve if you need listening on arbitrary media
 // such as IPv6.
+//
+// If the certFile or keyFile has not been provided the server structure,
+// the function will use previously added TLS configuration.
 func (s *Server) ListenAndServeTLSEmbed(addr string, certData, keyData []byte) error {
 	ln, err := net.Listen("tcp4", addr)
 	if err != nil {
@@ -1245,48 +1260,93 @@ func (s *Server) ListenAndServeTLSEmbed(addr string, certData, keyData []byte) e
 // ServeTLS serves HTTPS requests from the given listener.
 //
 // certFile and keyFile are paths to TLS certificate and key files.
+//
+// If the certFile or keyFile has not been provided the server structure,
+// the function will use previously added TLS configuration.
 func (s *Server) ServeTLS(ln net.Listener, certFile, keyFile string) error {
-	lnTLS, err := newTLSListener(ln, certFile, keyFile)
-	if err != nil {
+	err := s.AppendCert(certFile, keyFile)
+	if err != nil && err != errNoCertOrKeyProvided {
 		return err
 	}
-	return s.Serve(lnTLS)
+	if s.tlsConfig == nil {
+		return errNoCertOrKeyProvided
+	}
+	s.tlsConfig.BuildNameToCertificate()
+
+	return s.Serve(
+		tls.NewListener(ln, s.tlsConfig),
+	)
 }
 
 // ServeTLSEmbed serves HTTPS requests from the given listener.
 //
 // certData and keyData must contain valid TLS certificate and key data.
+//
+// If the certFile or keyFile has not been provided the server structure,
+// the function will use previously added TLS configuration.
 func (s *Server) ServeTLSEmbed(ln net.Listener, certData, keyData []byte) error {
-	lnTLS, err := newTLSListenerEmbed(ln, certData, keyData)
-	if err != nil {
+	err := s.AppendCertEmbed(certData, keyData)
+	if err != nil && err != errNoCertOrKeyProvided {
 		return err
 	}
-	return s.Serve(lnTLS)
+	if s.tlsConfig == nil {
+		return errNoCertOrKeyProvided
+	}
+	s.tlsConfig.BuildNameToCertificate()
+
+	return s.Serve(
+		tls.NewListener(ln, s.tlsConfig),
+	)
 }
 
-func newTLSListener(ln net.Listener, certFile, keyFile string) (net.Listener, error) {
+// AppendCert appends certificate and keyfile to TLS Configuration.
+//
+// This function allows programmer to handle multiple domains
+// in one server structure. See examples/multidomain
+func (s *Server) AppendCert(certFile, keyFile string) error {
+	if len(certFile) == 0 && len(keyFile) == 0 {
+		return errNoCertOrKeyProvided
+	}
+
 	cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		return nil, fmt.Errorf("cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
+		return fmt.Errorf("cannot load TLS key pair from certFile=%q and keyFile=%q: %s", certFile, keyFile, err)
 	}
-	return newCertListener(ln, &cert), nil
+
+	if s.tlsConfig == nil {
+		s.tlsConfig = &tls.Config{
+			Certificates:             []tls.Certificate{cert},
+			PreferServerCipherSuites: true,
+		}
+		return nil
+	}
+
+	s.tlsConfig.Certificates = append(s.tlsConfig.Certificates, cert)
+	return nil
 }
 
-func newTLSListenerEmbed(ln net.Listener, certData, keyData []byte) (net.Listener, error) {
+// AppendCertEmbed does the same as AppendCert but using in-memory data.
+func (s *Server) AppendCertEmbed(certData, keyData []byte) error {
+	if len(certData) == 0 && len(keyData) == 0 {
+		return errNoCertOrKeyProvided
+	}
+
 	cert, err := tls.X509KeyPair(certData, keyData)
 	if err != nil {
-		return nil, fmt.Errorf("cannot load TLS key pair from the provided certData(%d) and keyData(%d): %s",
+		return fmt.Errorf("cannot load TLS key pair from the provided certData(%d) and keyData(%d): %s",
 			len(certData), len(keyData), err)
 	}
-	return newCertListener(ln, &cert), nil
-}
 
-func newCertListener(ln net.Listener, cert *tls.Certificate) net.Listener {
-	tlsConfig := &tls.Config{
-		Certificates:             []tls.Certificate{*cert},
-		PreferServerCipherSuites: true,
+	if s.tlsConfig == nil {
+		s.tlsConfig = &tls.Config{
+			Certificates:             []tls.Certificate{cert},
+			PreferServerCipherSuites: true,
+		}
+		return nil
 	}
-	return tls.NewListener(ln, tlsConfig)
+
+	s.tlsConfig.Certificates = append(s.tlsConfig.Certificates, cert)
+	return nil
 }
 
 // DefaultConcurrency is the maximum number of concurrent connections
@@ -1317,6 +1377,7 @@ func (s *Server) Serve(ln net.Listener) error {
 		MaxWorkersCount: maxWorkersCount,
 		LogAllErrors:    s.LogAllErrors,
 		Logger:          s.logger(),
+		connState:       s.setState,
 	}
 	wp.Start()
 
@@ -1328,12 +1389,14 @@ func (s *Server) Serve(ln net.Listener) error {
 			}
 			return err
 		}
+		s.setState(c, StateNew)
 		s.wg.Add(1)
 		if !wp.Serve(c) {
 			s.wg.Done()
 			s.writeFastError(c, StatusServiceUnavailable,
 				"The connection cannot be served because Server.Concurrency limit exceeded")
 			c.Close()
+			s.setState(c, StateClosed)
 			if time.Since(lastOverflowErrorTime) > time.Minute {
 				s.logger().Printf("The incoming connection cannot be served, because %d concurrent connections are served. "+
 					"Try increasing Server.Concurrency", maxWorkersCount)
@@ -1482,11 +1545,13 @@ func (s *Server) ServeConn(c net.Conn) error {
 
 	if err != errHijacked {
 		err1 := c.Close()
+		s.setState(c, StateClosed)
 		if err == nil {
 			err = err1
 		}
 	} else {
 		err = nil
+		s.setState(c, StateHijacked)
 	}
 	return err
 }
@@ -1577,7 +1642,12 @@ func (s *Server) serveConn(c net.Conn) error {
 				ctx.Request.Header.DisableNormalizing()
 				ctx.Response.Header.DisableNormalizing()
 			}
+			// reading Headers and Body
 			err = ctx.Request.readLimitBody(br, maxRequestBodySize, s.GetOnly)
+			if br.Buffered() > 0 {
+				// If we read any bytes off the wire, we're active.
+				s.setState(c, StateActive)
+			}
 			if br.Buffered() == 0 || err != nil {
 				releaseReader(s, br)
 				br = nil
@@ -1727,6 +1797,7 @@ func (s *Server) serveConn(c net.Conn) error {
 		}
 
 		currentTime = time.Now()
+		s.setState(c, StateIdle)
 	}
 
 	if br != nil {
@@ -1737,6 +1808,12 @@ func (s *Server) serveConn(c net.Conn) error {
 	}
 	s.releaseCtx(ctx)
 	return err
+}
+
+func (s *Server) setState(nc net.Conn, state ConnState) {
+	if hook := s.ConnState; hook != nil {
+		hook(nc, state)
+	}
 }
 
 func (s *Server) updateReadDeadline(c net.Conn, ctx *RequestCtx, lastDeadlineTime time.Time) time.Time {
@@ -1936,9 +2013,8 @@ func releaseWriter(s *Server, w *bufio.Writer) {
 	s.writerPool.Put(w)
 }
 
-func (s *Server) acquireCtx(c net.Conn) *RequestCtx {
+func (s *Server) acquireCtx(c net.Conn) (ctx *RequestCtx) {
 	v := s.ctxPool.Get()
-	var ctx *RequestCtx
 	if v == nil {
 		ctx = &RequestCtx{
 			s: s,
@@ -1950,7 +2026,7 @@ func (s *Server) acquireCtx(c net.Conn) *RequestCtx {
 		ctx = v.(*RequestCtx)
 	}
 	ctx.c = c
-	return ctx
+	return
 }
 
 // Init2 prepares ctx for passing to RequestHandler.
@@ -2082,4 +2158,56 @@ func writeErrorResponse(bw *bufio.Writer, ctx *RequestCtx, serverName []byte, er
 	writeResponse(ctx, bw)
 	bw.Flush()
 	return bw
+}
+
+// A ConnState represents the state of a client connection to a server.
+// It's used by the optional Server.ConnState hook.
+type ConnState int
+
+const (
+	// StateNew represents a new connection that is expected to
+	// send a request immediately. Connections begin at this
+	// state and then transition to either StateActive or
+	// StateClosed.
+	StateNew ConnState = iota
+
+	// StateActive represents a connection that has read 1 or more
+	// bytes of a request. The Server.ConnState hook for
+	// StateActive fires before the request has entered a handler
+	// and doesn't fire again until the request has been
+	// handled. After the request is handled, the state
+	// transitions to StateClosed, StateHijacked, or StateIdle.
+	// For HTTP/2, StateActive fires on the transition from zero
+	// to one active request, and only transitions away once all
+	// active requests are complete. That means that ConnState
+	// cannot be used to do per-request work; ConnState only notes
+	// the overall state of the connection.
+	StateActive
+
+	// StateIdle represents a connection that has finished
+	// handling a request and is in the keep-alive state, waiting
+	// for a new request. Connections transition from StateIdle
+	// to either StateActive or StateClosed.
+	StateIdle
+
+	// StateHijacked represents a hijacked connection.
+	// This is a terminal state. It does not transition to StateClosed.
+	StateHijacked
+
+	// StateClosed represents a closed connection.
+	// This is a terminal state. Hijacked connections do not
+	// transition to StateClosed.
+	StateClosed
+)
+
+var stateName = map[ConnState]string{
+	StateNew:      "new",
+	StateActive:   "active",
+	StateIdle:     "idle",
+	StateHijacked: "hijacked",
+	StateClosed:   "closed",
+}
+
+func (c ConnState) String() string {
+	return stateName[c]
 }
