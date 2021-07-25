@@ -1505,6 +1505,9 @@ func (s *Server) Serve(ln net.Listener) error {
 	}
 	wp.Start()
 
+	atomic.AddInt32(&s.open, 1)
+	defer atomic.AddInt32(&s.open, -1)
+
 	for {
 		if c, err = acceptConn(s, ln, &lastPerIPErrorTime); err != nil {
 			wp.Stop()
