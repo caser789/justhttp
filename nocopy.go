@@ -2,4 +2,5 @@ package fasthttp
 
 type noCopy struct{}
 
-func (*noCopy) Lock() {}
+func (*noCopy) Lock()   {}
+func (*noCopy) UnLock() {}
