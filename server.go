@@ -1850,6 +1850,8 @@ func (s *Server) serveConn(c net.Conn) error {
 		if err != nil {
 			if err == io.EOF {
 				err = nil
+			} else if connRequestNum > 1 && err == errNothingRead {
+				err = nil
 			} else {
 				bw = s.writeErrorResponse(bw, ctx, serverName, err)
 			}
