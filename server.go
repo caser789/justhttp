@@ -580,6 +580,10 @@ func (ctx *RequestCtx) TLSConnectionState() *tls.ConnectionState {
 	return &state
 }
 
+func (ctx *RequestCtx) Conn() net.Conn {
+	return ctx.c
+}
+
 type firstByteReader struct {
 	c        net.Conn
 	ch       byte
