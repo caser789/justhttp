@@ -610,7 +610,7 @@ type HostClient struct {
 	readerPool sync.Pool
 	writerPool sync.Pool
 
-	pendingRequests uint64
+	pendingRequests int32
 
 	connsCleanerRun bool
 }
@@ -1020,7 +1020,7 @@ func (c *HostClient) Do(req *Request, resp *Response) error {
 	}
 	attempts := 0
 
-	atomic.AddUint64(&c.pendingRequests, 1)
+	atomic.AddInt32(&c.pendingRequests, 1)
 	for {
 		retry, err = c.do(req, resp)
 		if err == nil || !retry {
@@ -1044,7 +1044,7 @@ func (c *HostClient) Do(req *Request, resp *Response) error {
 			break
 		}
 	}
-	atomic.AddUint64(&c.pendingRequests, ^uint64(0))
+	atomic.AddInt32(&c.pendingRequests, -1)
 
 	if err == io.EOF {
 		err = ErrConnectionClosed
@@ -1058,7 +1058,7 @@ func (c *HostClient) Do(req *Request, resp *Response) error {
 // This function may be used for balancing load among multiple HostClient
 // instances.
 func (c *HostClient) PendingRequests() int {
-	return int(atomic.LoadUint64(&c.pendingRequests))
+	return int(atomic.LoadInt32(&c.pendingRequests))
 }
 
 func isIdempotent(req *Request) bool {

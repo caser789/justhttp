@@ -546,6 +546,7 @@ func (ctx *RequestCtx) VisitUserValues(visitor func([]byte, interface{})) {
 }
 
 type connTLSer interface {
+	Handshake() error
 	ConnectionState() tls.ConnectionState
 }
 
@@ -580,6 +581,11 @@ func (ctx *RequestCtx) TLSConnectionState() *tls.ConnectionState {
 	return &state
 }
 
+// Conn returns a reference to the underlying net.Conn.
+//
+// WARNING: Only use this method if you know what you are doing!
+//
+// Reading from or writing to the returned connection will end badly!
 func (ctx *RequestCtx) Conn() net.Conn {
 	return ctx.c
 }
@@ -1262,9 +1268,10 @@ func (s *Server) NextProto(key string, nph ServeHandler) {
 	s.nextProtos[key] = nph
 }
 
-func (s *Server) hasNextProto(c net.Conn) (proto string) {
+func (s *Server) hasNextProto(c net.Conn) (proto string, err error) {
 	tlsConn, ok := c.(connTLSer)
 	if ok {
+		err = tlsConn.Handshake()
 		proto = tlsConn.ConnectionState().NegotiatedProtocol
 	}
 	return
@@ -1509,6 +1516,10 @@ func (s *Server) Serve(ln net.Listener) error {
 	}
 	wp.Start()
 
+	// Count our waiting to accept a connection as an open connection.
+	// This way we can't get into any weird state where just after accepting
+	// a connection Shutdown is called which reads open as 0 because it isn't
+	// incremented yet.
 	atomic.AddInt32(&s.open, 1)
 	defer atomic.AddInt32(&s.open, -1)
 
@@ -1707,16 +1718,20 @@ func (s *Server) ServeConn(c net.Conn) error {
 
 var errHijacked = errors.New("connection has been hijacked")
 
+// GetCurrentConcurrency returns a number of currently served
+// connections.
+//
+// This function is intended be used by monitoring systems
+func (s *Server) GetCurrentConcurrency() uint32 {
+	return atomic.LoadUint32(&s.concurrency)
+}
+
 func (s *Server) getConcurrency() int {
 	n := s.Concurrency
 	if n <= 0 {
 		n = DefaultConcurrency
 	}
 	return n
-}
-
-func (s *Server) GetCurrentConcurrency() uint32 {
-	return s.concurrency
 }
 
 var globalConnID uint64
@@ -1734,11 +1749,14 @@ const DefaultMaxRequestBodySize = 4 * 1024 * 1024
 func (s *Server) serveConn(c net.Conn) error {
 	defer atomic.AddInt32(&s.open, -1)
 
-	if proto := s.hasNextProto(c); proto != "" {
+	if proto, err := s.hasNextProto(c); err != nil {
+		return err
+	} else {
 		handler, ok := s.nextProtos[proto]
 		if ok {
 			return handler(c)
 		}
+		// TODO: else continue?
 	}
 
 	var serverName []byte
