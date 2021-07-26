@@ -2,6 +2,7 @@ package fasthttp
 
 import (
 	"bufio"
+	"context"
 	"crypto/tls"
 	"errors"
 	"fmt"
@@ -1979,9 +1980,16 @@ func (s *Server) serveConn(c net.Conn) error {
 			break
 		}
 
-		err = bw.Flush()
-		if err != nil {
-			break
+		// Only flush the writer if we don't have another request in the pipeline.
+		// This is a big of an ugly optimization for https://www.techempower.com/benchmarks/
+		// This benchmark will send 16 pipelined requests. It is faster to pack as many responses
+		// in a TCP packet and send it back at once than waiting for a flush every request.
+		// In real world circumstances this behaviour could be argued as being wrong.
+		if br == nil || br.Buffered() == 0 || connectionClose {
+			err = bw.Flush()
+			if err != nil {
+				break
+			}
 		}
 		if connectionClose {
 			break
@@ -2001,6 +2009,10 @@ func (s *Server) serveConn(c net.Conn) error {
 				ctx = s.acquireCtx(c)
 			}
 			if bw != nil {
+				err = bw.Flush()
+				if err != nil {
+					break
+				}
 				releaseWriter(s, bw)
 				bw = nil
 			}
@@ -2311,13 +2323,15 @@ func (ctx *RequestCtx) Done() <-chan struct{} {
 // successive calls to Err return the same error.
 // If Done is not yet closed, Err returns nil.
 // If Done is closed, Err returns a non-nil error explaining why:
-// Canceled if the context was canceled
+// Canceled if the context was canceled (via server Shutdown)
 // or DeadlineExceeded if the context's deadline passed.
-//
-// This method always returns nil and is only present to make
-// RequestCtx implement the context interface.
 func (ctx *RequestCtx) Err() error {
-	return nil
+	select {
+	case <-ctx.s.done:
+		return context.Canceled
+	default:
+		return nil
+	}
 }
 
 // Value returns the value associated with this context for key, or nil
