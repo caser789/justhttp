@@ -702,7 +702,7 @@ func TestResponseSkipBody(t *testing.T) {
 func TestRequestNoContentLength(t *testing.T) {
 	var r Request
 
-	r.Header.SetMethod("HEAD")
+	r.Header.SetMethod(MethodHead)
 	r.Header.SetHost("foobar")
 
 	s := r.String()
@@ -710,7 +710,7 @@ func TestRequestNoContentLength(t *testing.T) {
 		t.Fatalf("unexpected content-length in HEAD request %q", s)
 	}
 
-	r.Header.SetMethod("POST")
+	r.Header.SetMethod(MethodPost)
 	fmt.Fprintf(r.BodyWriter(), "foobar body")
 	s = r.String()
 	if !strings.Contains(s, "Content-Length: ") {
@@ -1253,7 +1253,7 @@ func TestSetResponseBodyStreamChunked(t *testing.T) {
 func testSetRequestBodyStream(t *testing.T, body string, chunked bool) {
 	var req Request
 	req.Header.SetHost("foobar.com")
-	req.Header.SetMethod("POST")
+	req.Header.SetMethod(MethodPost)
 
 	bodySize := len(body)
 	if chunked {
@@ -1416,22 +1416,22 @@ func testResponseReadWithoutBody(t *testing.T, resp *Response, s string, skipBod
 
 func TestRequestSuccess(t *testing.T) {
 	// empty method, user-agent and body
-	testRequestSuccess(t, "", "/foo/bar", "google.com", "", "", "GET")
+	testRequestSuccess(t, "", "/foo/bar", "google.com", "", "", MethodGet)
 
 	// non-empty user-agent
-	testRequestSuccess(t, "GET", "/foo/bar", "google.com", "MSIE", "", "GET")
+	testRequestSuccess(t, MethodGet, "/foo/bar", "google.com", "MSIE", "", MethodGet)
 
 	// non-empty method
-	testRequestSuccess(t, "HEAD", "/aaa", "fobar", "", "", "HEAD")
+	testRequestSuccess(t, MethodHead, "/aaa", "fobar", "", "", MethodHead)
 
 	// POST method with body
-	testRequestSuccess(t, "POST", "/bbb", "aaa.com", "Chrome aaa", "post body", "POST")
+	testRequestSuccess(t, MethodPost, "/bbb", "aaa.com", "Chrome aaa", "post body", MethodPost)
 
 	// PUT method with body
-	testRequestSuccess(t, "PUT", "/aa/bb", "a.com", "ome aaa", "put body", "PUT")
+	testRequestSuccess(t, MethodPut, "/aa/bb", "a.com", "ome aaa", "put body", MethodPut)
 
 	// only host is set
-	testRequestSuccess(t, "", "", "gooble.com", "", "", "GET")
+	testRequestSuccess(t, "", "", "gooble.com", "", "", MethodGet)
 }
 
 func TestResponseSuccess(t *testing.T) {
@@ -1501,7 +1501,7 @@ func TestRequestWriteError(t *testing.T) {
 	testRequestWriteError(t, "", "/foo/bar", "", "", "")
 
 	// get with body
-	testRequestWriteError(t, "GET", "/foo/bar", "aaa.com", "", "foobar")
+	testRequestWriteError(t, MethodGet, "/foo/bar", "aaa.com", "", "foobar")
 }
 
 func testRequestWriteError(t *testing.T, method, requestURI, host, userAgent, body string) {
@@ -1531,7 +1531,7 @@ func testRequestSuccess(t *testing.T, method, requestURI, host, userAgent, body,
 	req.SetBody([]byte(body))
 
 	contentType := "foobar"
-	if method == "POST" {
+	if method == MethodPost {
 		req.Header.Set("Content-Type", contentType)
 	}
 
@@ -1569,7 +1569,7 @@ func testRequestSuccess(t *testing.T, method, requestURI, host, userAgent, body,
 		t.Fatalf("Unexpected body: %q. Expected %q", req1.Body(), body)
 	}
 
-	if method == "POST" && string(req1.Header.Peek("Content-Type")) != contentType {
+	if method == MethodPost && string(req1.Header.Peek("Content-Type")) != contentType {
 		t.Fatalf("Unexpected content-type: %q. Expected %q", req1.Header.Peek("Content-Type"), contentType)
 	}
 }
@@ -1920,4 +1920,134 @@ func TestResponseRawBodyCopyTo(t *testing.T) {
 	resp.SetBodyRaw(body)
 
 	testResponseCopyTo(t, &resp)
+}
+
+type testReader struct {
+	read chan (int)
+	cb   chan (struct{})
+}
+
+func (r *testReader) Read(b []byte) (int, error) {
+	read := <-r.read
+
+	if read == -1 {
+		return 0, io.EOF
+	}
+
+	r.cb <- struct{}{}
+
+	for i := 0; i < read; i++ {
+		b[i] = 'x'
+	}
+
+	return read, nil
+}
+
+func TestResponseImmediateHeaderFlushRegressionFixedLength(t *testing.T) {
+	var r Response
+
+	expectedS := "aaabbbccc"
+	buf := bytes.NewBufferString(expectedS)
+	r.SetBodyStream(buf, len(expectedS))
+	r.ImmediateHeaderFlush = true
+
+	testBodyWriteTo(t, &r, expectedS, false)
+}
+
+func TestResponseImmediateHeaderFlushRegressionChunked(t *testing.T) {
+	var r Response
+
+	expectedS := "aaabbbccc"
+	buf := bytes.NewBufferString(expectedS)
+	r.SetBodyStream(buf, -1)
+	r.ImmediateHeaderFlush = true
+
+	testBodyWriteTo(t, &r, expectedS, false)
+}
+
+func TestResponseImmediateHeaderFlushFixedLength(t *testing.T) {
+	var r Response
+
+	r.ImmediateHeaderFlush = true
+
+	ch := make(chan int)
+	cb := make(chan struct{})
+
+	buf := &testReader{read: ch, cb: cb}
+
+	r.SetBodyStream(buf, 3)
+
+	b := []byte{}
+	w := bytes.NewBuffer(b)
+	bb := bufio.NewWriter(w)
+
+	bw := &r
+
+	waitForIt := make(chan struct{})
+
+	go func() {
+		if err := bw.Write(bb); err != nil {
+			t.Fatalf("unexpected error: %s", err)
+		}
+		waitForIt <- struct{}{}
+	}()
+
+	ch <- 3
+
+	if !strings.Contains(w.String(), "Content-Length: 3") {
+		t.Fatalf("Expected headers to be flushed")
+	}
+
+	if strings.Contains(w.String(), "xxx") {
+		t.Fatalf("Did not expext body to be written yet")
+	}
+
+	<-cb
+	ch <- -1
+
+	<-waitForIt
+}
+
+func TestResponseImmediateHeaderFlushChunked(t *testing.T) {
+	var r Response
+
+	r.ImmediateHeaderFlush = true
+
+	ch := make(chan int)
+	cb := make(chan struct{})
+
+	buf := &testReader{read: ch, cb: cb}
+
+	r.SetBodyStream(buf, -1)
+
+	b := []byte{}
+	w := bytes.NewBuffer(b)
+	bb := bufio.NewWriter(w)
+
+	bw := &r
+
+	waitForIt := make(chan struct{})
+
+	go func() {
+		if err := bw.Write(bb); err != nil {
+			t.Fatalf("unexpected error: %s", err)
+		}
+
+		waitForIt <- struct{}{}
+	}()
+
+	ch <- 3
+
+	if !strings.Contains(w.String(), "Transfer-Encoding: chunked") {
+		t.Fatalf("Expected headers to be flushed")
+	}
+
+	if strings.Contains(w.String(), "xxx") {
+		t.Fatalf("Did not expext body to be written yet")
+	}
+
+	<-cb
+	ch <- -1
+
+	<-waitForIt
 }
