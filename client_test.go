@@ -19,6 +19,44 @@ import (
 	"github.com/caser789/justhttp/fasthttputil"
 )
 
+func TestClientURLAuth(t *testing.T) {
+	cases := map[string]string{
+		"user:pass@": "dXNlcjpwYXNz",
+		"foo:@":      "Zm9vOg==",
+		":@":         "",
+		"@":          "",
+		"":           "",
+	}
+
+	ch := make(chan string, 1)
+	ln := fasthttputil.NewInmemoryListener()
+	s := &Server{
+		Handler: func(ctx *RequestCtx) {
+			ch <- string(ctx.Request.Header.Peek(HeaderAuthorization))
+		},
+	}
+	go s.Serve(ln)
+	c := &Client{
+		Dial: func(addr string) (net.Conn, error) {
+			return ln.Dial()
+		},
+	}
+	for up, expected := range cases {
+		req := AcquireRequest()
+		req.Header.SetMethod(MethodGet)
+		req.SetRequestURI("http://" + up + "example.com")
+		if err := c.Do(req, nil); err != nil {
+			t.Fatal(err)
+		}
+
+		val := <-ch
+
+		if val != expected {
+			t.Fatalf("wrong %s header: %s expected %s", HeaderAuthorization, val, expected)
+		}
+	}
+}
+
 func TestClientNilResp(t *testing.T) {
 	ln := fasthttputil.NewInmemoryListener()
 	s := &Server{
@@ -32,7 +70,7 @@ func TestClientNilResp(t *testing.T) {
 		},
 	}
 	req := AcquireRequest()
-	req.Header.SetMethod("GET")
+	req.Header.SetMethod(MethodGet)
 	req.SetRequestURI("http://example.com")
 	if err := c.Do(req, nil); err != nil {
 		t.Fatal(err)
@@ -99,7 +137,7 @@ func TestClientPostArgs(t *testing.T) {
 	args := req.PostArgs()
 	args.Add("addhttp2", "support")
 	args.Add("fast", "http")
-	req.Header.SetMethod("POST")
+	req.Header.SetMethod(MethodPost)
 	req.SetRequestURI("http://make.fasthttp.great?again")
 	err := c.Do(req, res)
 	if err != nil {
@@ -490,8 +528,8 @@ func TestClientDoWithCustomHeaders(t *testing.T) {
 			ch <- fmt.Errorf("cannot read client request: %s", err)
 			return
 		}
-		if string(req.Header.Method()) != "POST" {
-			ch <- fmt.Errorf("unexpected request method: %q. Expecting %q", req.Header.Method(), "POST")
+		if string(req.Header.Method()) != MethodPost {
+			ch <- fmt.Errorf("unexpected request method: %q. Expecting %q", req.Header.Method(), MethodPost)
 			return
 		}
 		reqURI := req.RequestURI()
@@ -532,7 +570,7 @@ func TestClientDoWithCustomHeaders(t *testing.T) {
 	}()
 
 	var req Request
-	req.Header.SetMethod("POST")
+	req.Header.SetMethod(MethodPost)
 	req.SetRequestURI(uri)
 	for k, v := range headers {
 		req.Header.Set(k, v)
@@ -847,7 +885,7 @@ func TestHostClientMaxConnsWithDeadline(t *testing.T) {
 
 			req := AcquireRequest()
 			req.SetRequestURI("http://foobar/baz")
-			req.Header.SetMethod("POST")
+			req.Header.SetMethod(MethodPost)
 			req.SetBodyString("bar")
 			resp := AcquireResponse()
 
