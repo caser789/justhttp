@@ -15,22 +15,57 @@ import (
 	"github.com/valyala/bytebufferpool"
 )
 
+func TestRequestCopyTo(t *testing.T) {
+	var req Request
+
+	// empty copy
+	testRequestCopyTo(t, &req)
+
+	// init
+	expectedContentType := "application/x-www-form-urlencoded; charset=UTF-8"
+	expectedHost := "test.com"
+	expectedBody := "0123=56789"
+	s := fmt.Sprintf("POST / HTTP/1.1\r\nHost: %s\r\nContent-Type: %s\r\nContent-Length: %d\r\n\r\n%s",
+		expectedHost, expectedContentType, len(expectedBody), expectedBody)
+	br := bufio.NewReader(bytes.NewBufferString(s))
+	if err := req.Read(br); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	testRequestCopyTo(t, &req)
+
+}
+
 func TestResponseCopyTo(t *testing.T) {
-	resp := &Response{}
-	copyResp := &Response{}
+	var resp Response
+
+	// empty copy
+	testResponseCopyTo(t, &resp)
 
 	// init resp
 	resp.laddr = zeroTCPAddr
 	resp.SkipBody = true
 	resp.Header.SetStatusCode(200)
 	resp.SetBodyString("test")
+	testResponseCopyTo(t, &resp)
 
-	resp.CopyTo(copyResp)
+}
 
-	if !reflect.DeepEqual(resp, copyResp) {
-		t.Fatal("ResponseCopyTo fail")
+func testRequestCopyTo(t *testing.T, src *Request) {
+	var dst Request
+	src.CopyTo(&dst)
+
+	if !reflect.DeepEqual(*src, dst) {
+		t.Fatalf("RequestCopyTo fail, src: \n%+v\ndst: \n%+v\n", *src, dst)
 	}
+}
 
+func testResponseCopyTo(t *testing.T, src *Response) {
+	var dst Response
+	src.CopyTo(&dst)
+
+	if !reflect.DeepEqual(*src, dst) {
+		t.Fatalf("ResponseCopyTo fail, src: \n%+v\ndst: \n%+v\n", *src, dst)
+	}
 }
 
 func TestResponseBodyStreamDeflate(t *testing.T) {
@@ -1855,4 +1890,34 @@ Content-Type: application/json
 	if w.String() != s {
 		t.Fatalf("unexpected output %q", w.Bytes())
 	}
+}
+
+func TestResponseRawBodySet(t *testing.T) {
+	var resp Response
+
+	expectedS := "test"
+	body := []byte(expectedS)
+	resp.SetBodyRaw(body)
+
+	testBodyWriteTo(t, &resp, expectedS, true)
+}
+
+func TestResponseRawBodyReset(t *testing.T) {
+	var resp Response
+
+	body := []byte("test")
+	resp.SetBodyRaw(body)
+	resp.ResetBody()
+
+	testBodyWriteTo(t, &resp, "", true)
+}
+
+func TestResponseRawBodyCopyTo(t *testing.T) {
+	var resp Response
+
+	expectedS := "test"
+	body := []byte(expectedS)
+	resp.SetBodyRaw(body)
+
+	testResponseCopyTo(t, &resp)
 }
