@@ -67,7 +67,6 @@ var (
 	strGzip                = []byte("gzip")
 	strDeflate             = []byte("deflate")
 	strKeepAlive           = []byte("keep-alive")
-	strKeepAliveCamelCase  = []byte("Keep-Alive")
 	strUpgrade             = []byte("Upgrade")
 	strChunked             = []byte("chunked")
 	strIdentity            = []byte("identity")
