@@ -191,7 +191,7 @@ func TestSaveMultipartFile(t *testing.T) {
 	if c, err := ioutil.ReadFile("filea.txt"); err != nil {
 		t.Fatal(err)
 	} else if string(c) != filea {
-		t.Fatalf("filea changed expeced %q got %q", filea, c)
+		t.Fatalf("filea changed expected %q got %q", filea, c)
 	}
 
 	// Make sure fileb was saved to a file.
@@ -211,7 +211,7 @@ func TestSaveMultipartFile(t *testing.T) {
 	if c, err := ioutil.ReadFile("fileb.txt"); err != nil {
 		t.Fatal(err)
 	} else if string(c) != fileb {
-		t.Fatalf("fileb changed expeced %q got %q", fileb, c)
+		t.Fatalf("fileb changed expected %q got %q", fileb, c)
 	}
 }
 
@@ -3044,6 +3044,50 @@ func TestShutdownErr(t *testing.T) {
 	// We can only reach this point and get a valid response
 	// if reading from ctx.Done() returned.
 	br := bufio.NewReader(conn)
+	verifyResponse(t, br, StatusOK, "aaa/bbb", "real response")
+}
+
+func TestMultipleServe(t *testing.T) {
+	t.Parallel()
+
+	s := &Server{
+		Handler: func(ctx *RequestCtx) {
+			ctx.Success("aaa/bbb", []byte("real response"))
+		},
+	}
+
+	ln1 := fasthttputil.NewInmemoryListener()
+	ln2 := fasthttputil.NewInmemoryListener()
+
+	go func() {
+		if err := s.Serve(ln1); err != nil {
+			t.Errorf("unexepcted error: %s", err)
+		}
+	}()
+	go func() {
+		if err := s.Serve(ln2); err != nil {
+			t.Errorf("unexepcted error: %s", err)
+		}
+	}()
+
+	conn, err := ln1.Dial()
+	if err != nil {
+		t.Fatalf("unexepcted error: %s", err)
+	}
+	if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: google.com\r\n\r\n")); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	br := bufio.NewReader(conn)
+	verifyResponse(t, br, StatusOK, "aaa/bbb", "real response")
+
+	conn, err = ln2.Dial()
+	if err != nil {
+		t.Fatalf("unexepcted error: %s", err)
+	}
+	if _, err = conn.Write([]byte("GET / HTTP/1.1\r\nHost: google.com\r\n\r\n")); err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	br = bufio.NewReader(conn)
 	verifyResponse(t, br, StatusOK, "aaa/bbb", "real response")
 }
 
