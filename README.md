@@ -35,6 +35,7 @@ https://godoc.org/github.com/caser789/justhttp
         - [x] SessionClient with referer and cookies support
         - [x] pipeline requests
     - [x] Virtual hosting
+    - [x] prefork
 - Performance
     - [ ] Use sendfile syscall
     - [x] connection pool
