@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -18,7 +19,7 @@ import (
 // ResponseHeader instance MUST NOT be used from concurrently running
 // goroutines.
 type ResponseHeader struct {
-	noCopy noCopy
+	noCopy noCopy //nolint:unused,structcheck
 
 	disableNormalizing   bool
 	noHTTP11             bool
@@ -46,7 +47,7 @@ type ResponseHeader struct {
 // RequestHeader instance MUST NOT be used from concurrently running
 // goroutines.
 type RequestHeader struct {
-	noCopy noCopy
+	noCopy noCopy //nolint:unused,structcheck
 
 	disableNormalizing bool
 	noHTTP11           bool
@@ -1283,7 +1284,7 @@ func (h *ResponseHeader) Cookie(cookie *Cookie) bool {
 	if v == nil {
 		return false
 	}
-	cookie.ParseBytes(v)
+	cookie.ParseBytes(v) //nolint:errcheck
 	return true
 }
 
@@ -1436,7 +1437,7 @@ func isOnlyCRLF(b []byte) bool {
 	return true
 }
 
-func init() {
+func updateServerDate() {
 	refreshServerDate()
 	go func() {
 		for {
@@ -1446,7 +1447,10 @@ func init() {
 	}()
 }
 
-var serverDate atomic.Value
+var (
+	serverDate     atomic.Value
+	serverDateOnce sync.Once // serverDateOnce.Do(updateServerDate)
+)
 
 func refreshServerDate() {
 	b := AppendHTTPDate(nil, time.Now())
@@ -1493,6 +1497,8 @@ func (h *ResponseHeader) AppendBytes(dst []byte) []byte {
 	if len(server) != 0 {
 		dst = appendHeaderLine(dst, strServer, server)
 	}
+
+	serverDateOnce.Do(updateServerDate)
 	dst = appendHeaderLine(dst, strDate, serverDate.Load().([]byte))
 
 	// Append Content-Type only for non-zero responses
@@ -1978,7 +1984,7 @@ func (h *RequestHeader) parseRawHeaders() {
 	if len(h.rawHeaders) == 0 {
 		return
 	}
-	h.parseHeaders(h.rawHeaders)
+	h.parseHeaders(h.rawHeaders) //nolint:errcheck
 }
 
 func (h *RequestHeader) collectCookies() {
