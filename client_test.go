@@ -436,7 +436,9 @@ func TestClientReadTimeout(t *testing.T) {
 		req.SetRequestURI("http://localhost")
 		req.SetConnectionClose()
 
-		c.Do(req, res) //nolint:errcheck
+		if err := c.Do(req, res); err != ErrTimeout {
+			t.Errorf("expected ErrTimeout got %#v", err)
+		}
 
 		ReleaseRequest(req)
 		ReleaseResponse(res)
@@ -1523,11 +1525,11 @@ func (w *writeErrorConn) Close() error {
 	return nil
 }
 
-func (r *writeErrorConn) LocalAddr() net.Addr {
+func (w *writeErrorConn) LocalAddr() net.Addr {
 	return nil
 }
 
-func (r *writeErrorConn) RemoteAddr() net.Addr {
+func (w *writeErrorConn) RemoteAddr() net.Addr {
 	return nil
 }
 

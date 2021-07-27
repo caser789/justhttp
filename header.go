@@ -1307,7 +1307,11 @@ func (h *ResponseHeader) tryRead(r *bufio.Reader, n int) error {
 	h.resetSkipNormalize()
 	b, err := r.Peek(n)
 	if len(b) == 0 {
-		// treat all errors on the first byte read as EOF
+		// Return ErrTimeout on any timeout.
+		if x, ok := err.(interface{ Timeout() bool }); ok && x.Timeout() {
+			return ErrTimeout
+		}
+		// treat all other errors on the first byte read as EOF
 		if n == 1 || err == io.EOF {
 			return io.EOF
 		}
@@ -1662,13 +1666,13 @@ func (h *RequestHeader) parse(buf []byte) (int, error) {
 		return 0, err
 	}
 
-	var n int
 	var rawHeaders []byte
-	rawHeaders, n, err = readRawHeaders(h.rawHeaders[:0], buf[m:])
+	rawHeaders, _, err = readRawHeaders(h.rawHeaders[:0], buf[m:])
 	if err != nil {
 		return 0, err
 	}
 	h.rawHeadersCopy = append(h.rawHeadersCopy[:0], rawHeaders...)
+	var n int
 	n, err = h.parseHeaders(buf[m:])
 	if err != nil {
 		return 0, err
