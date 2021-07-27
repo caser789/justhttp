@@ -2053,6 +2053,20 @@ func (s *headerScanner) next() bool {
 		s.nextColon = -1
 	} else {
 		n = bytes.IndexByte(s.b, ':')
+
+		// There can't be a \n inside the header name, check for this.
+		x := bytes.IndexByte(s.b, '\n')
+		if x < 0 {
+			// A header name should always at some point be followed by a \n
+			// even if it's the one that terminates the header block.
+			s.err = errNeedMore
+			return false
+		}
+		if x < n {
+			// There was a \n before the :
+			s.err = errInvalidName
+			return false
+		}
 	}
 	if n < 0 {
 		s.err = errNeedMore
@@ -2083,6 +2097,9 @@ func (s *headerScanner) next() bool {
 	isMultiLineValue := false
 	for {
 		if n+1 >= len(s.b) {
+			break
+		}
+		if s.b[n+1] != ' ' && s.b[n+1] != '\t' {
 			break
 		}
 		d := bytes.IndexByte(s.b[n+1:], '\n')
@@ -2195,18 +2212,40 @@ func normalizeHeaderValue(ov, ob []byte, headerLength int) (nv, nb []byte, nhl i
 	}
 	write := 0
 	shrunk := 0
+	lineStart := false
 	for read := 0; read < length; read++ {
 		c := ov[read]
 		if c == '\r' || c == '\n' {
 			shrunk++
+			if c == '\n' {
+				lineStart = true
+			}
 			continue
+		} else if lineStart && c == '\t' {
+			c = ' '
+		} else {
+			lineStart = false
 		}
 		nv[write] = c
 		write++
 	}
+
 	nv = nv[:write]
 	copy(ob[write:], ob[write+shrunk:])
-	nb = ob[write+2 : len(ob)-shrunk]
+
+	// Check if we need to skip \r\n or just \n
+	skip := 0
+	if ob[write] == '\r' {
+		if ob[write+1] == '\n' {
+			skip += 2
+		} else {
+			skip++
+		}
+	} else if ob[write] == '\n' {
+		skip++
+	}
+
+	nb = ob[write+skip : len(ob)-shrunk]
 	nhl = headerLength - shrunk
 	return
 }
@@ -2267,6 +2306,7 @@ func AppendNormalizedHeaderKeyBytes(dst, key []byte) []byte {
 
 var (
 	errNeedMore    = errors.New("need more data: cannot find trailing lf")
+	errInvalidName = errors.New("invalid header name")
 	errSmallBuffer = errors.New("small read buffer. Increase ReadBufferSize")
 )
 
