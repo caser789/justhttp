@@ -296,7 +296,7 @@ func writeHexInt(w *bufio.Writer, n int) error {
 	buf := v.([]byte)
 	i := len(buf) - 1
 	for {
-		buf[i] = upperhex[n&0xf]
+		buf[i] = lowerhex[n&0xf]
 		n >>= 4
 		if n == 0 {
 			break
@@ -327,6 +327,7 @@ var hex2intTable = func() []byte {
 const (
 	toLower  = 'a' - 'A'
 	upperhex = "0123456789ABCDEF"
+	lowerhex = "0123456789abcdef"
 )
 
 var toLowerTable = func() [256]byte {
@@ -448,7 +449,7 @@ func AppendQuotedArg(dst, src []byte) []byte {
 		case c == ' ':
 			dst = append(dst, '+')
 		case quotedArgShouldEscapeTable[int(c)]:
-			dst = append(dst, '%', upperhex[c>>4], upperhex[c&15])
+			dst = append(dst, '%', upperhex[c>>4], upperhex[c&0xf])
 		default:
 			dst = append(dst, c)
 		}
