@@ -1,5 +1,3 @@
-// +build !windows
-
 package reuseport
 
 import (
@@ -109,7 +107,7 @@ func serveEcho(t *testing.T, ln net.Listener) {
 		}
 		req, err := ioutil.ReadAll(c)
 		if err != nil {
-			t.Fatalf("unepxected error when reading request: %s", err)
+			t.Fatalf("unexpected error when reading request: %s", err)
 		}
 		if _, err = c.Write(req); err != nil {
 			t.Fatalf("unexpected error when writing response: %s", err)
