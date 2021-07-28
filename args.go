@@ -23,7 +23,7 @@ func AcquireArgs() *Args {
 	return argsPool.Get().(*Args)
 }
 
-// ReleaseArgs returns the object acquired via AquireArgs to the pool.
+// ReleaseArgs returns the object acquired via AcquireArgs to the pool.
 //
 // Do not access the released Args object, otherwise data races may occur.
 func ReleaseArgs(a *Args) {
@@ -44,7 +44,7 @@ var argsPool = &sync.Pool{
 //
 // Args instance MUST NOT be used from concurrently running goroutines.
 type Args struct {
-	noCopy noCopy
+	noCopy noCopy //nolint:unused,structcheck
 
 	args []argsKV
 	buf  []byte
@@ -361,7 +361,13 @@ func visitArgs(args []argsKV, f func(k, v []byte)) {
 func copyArgs(dst, src []argsKV) []argsKV {
 	if cap(dst) < len(src) {
 		tmp := make([]argsKV, len(src))
+		dst = dst[:cap(dst)] // copy all of dst.
 		copy(tmp, dst)
+		for i := len(dst); i < len(tmp); i++ {
+			// Make sure nothing is nil.
+			tmp[i].key = []byte{}
+			tmp[i].value = []byte{}
+		}
 		dst = tmp
 	}
 	n := len(src)
@@ -442,7 +448,9 @@ func allocArg(h []argsKV) ([]argsKV, *argsKV) {
 	if cap(h) > n {
 		h = h[:n+1]
 	} else {
-		h = append(h, argsKV{})
+		h = append(h, argsKV{
+			value: []byte{},
+		})
 	}
 	return h, &h[n]
 }
