@@ -741,6 +741,23 @@ func TestResponseReadEOF(t *testing.T) {
 	}
 }
 
+func TestRequestReadNoBody(t *testing.T) {
+	t.Parallel()
+
+	var r Request
+
+	br := bufio.NewReader(bytes.NewBufferString("GET / HTTP/1.1\r\n\r\n"))
+	err := r.Read(br)
+	r.SetHost("foobar")
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	s := r.String()
+	if strings.Contains(s, "Content-Length: ") {
+		t.Fatalf("unexpected Content-Length")
+	}
+}
+
 func TestResponseWriteTo(t *testing.T) {
 	t.Parallel()
 
