@@ -512,7 +512,7 @@ func (c *Client) Do(req *Request, resp *Response) error {
 	c.mLock.Unlock()
 
 	if startCleaner {
-		go c.mCleaner()
+		go c.mCleaner(m)
 	}
 
 	return hc.Do(req, resp)
@@ -533,21 +533,21 @@ func (c *Client) CloseIdleConnections() {
 	c.mLock.Unlock()
 }
 
-func (c *Client) mCleaner() {
+func (c *Client) mCleaner(m map[string]*HostClient) {
 	mustStop := false
 
 	for {
 		c.mLock.Lock()
-		for k, v := range c.m {
+		for k, v := range m {
 			v.connsLock.Lock()
 			shouldRemove := v.connsCount == 0
 			v.connsLock.Unlock()
 
 			if shouldRemove {
-				delete(c.m, k)
+				delete(m, k)
 			}
 		}
-		if len(c.m) == 0 {
+		if len(m) == 0 {
 			mustStop = true
 		}
 		c.mLock.Unlock()
@@ -1693,6 +1693,14 @@ func (c *HostClient) decConnsCount() {
 
 }
 
+// ConnsCount returns connection count of HostClient
+func (c *HostClient) ConnsCount() int {
+	c.connsLock.Lock()
+	defer c.connsLock.Unlock()
+
+	return c.connsCount
+}
+
 func acquireClientConn(conn net.Conn) *clientConn {
 	v := clientConnPool.Get()
 	if v == nil {
@@ -2144,6 +2152,33 @@ type PipelineClient struct {
 	// since unfortunately ipv6 remains broken in many networks worldwide :)
 	DialDualStack bool
 
+	// Response header names are passed as-is without normalization
+	// if this option is set.
+	//
+	// Disabled header names' normalization may be useful only for proxying
+	// responses to other clients expecting case-sensitive
+	// header names. See https://github.com/valyala/fasthttp/issues/57
+	// for details.
+	//
+	// By default request and response header names are normalized, i.e.
+	// The first letter and the first letters following dashes
+	// are uppercased, while all the other letters are lowercased.
+	// Examples:
+	//
+	//     * HOST -> Host
+	//     * content-type -> Content-Type
+	//     * cONTENT-lenGTH -> Content-Length
+	DisableHeaderNamesNormalizing bool
+
+	// Path values are sent as-is without normalization
+	//
+	// Disabled path normalization may be useful for proxying incoming requests
+	// to servers that are expecting paths to be forwarded as-is.
+	//
+	// By default path values are normalized, i.e.
+	// extra slashes are removed, special characters are encoded.
+	DisablePathNormalizing bool
+
 	// Whether to use TLS (aka SSL or HTTPS) for host connections.
 	IsTLS bool
 
@@ -2189,19 +2224,21 @@ type PipelineClient struct {
 type pipelineConnClient struct {
 	noCopy noCopy //nolint:unused,structcheck
 
-	Addr                string
-	MaxPendingRequests  int
-	MaxBatchDelay       time.Duration
-	Dial                DialFunc
-	DialDualStack       bool
-	IsTLS               bool
-	TLSConfig           *tls.Config
-	MaxIdleConnDuration time.Duration
-	ReadBufferSize      int
-	WriteBufferSize     int
-	ReadTimeout         time.Duration
-	WriteTimeout        time.Duration
-	Logger              Logger
+	Addr                          string
+	MaxPendingRequests            int
+	MaxBatchDelay                 time.Duration
+	Dial                          DialFunc
+	DialDualStack                 bool
+	DisableHeaderNamesNormalizing bool
+	DisablePathNormalizing        bool
+	IsTLS                         bool
+	TLSConfig                     *tls.Config
+	MaxIdleConnDuration           time.Duration
+	ReadBufferSize                int
+	WriteBufferSize               int
+	ReadTimeout                   time.Duration
+	WriteTimeout                  time.Duration
+	Logger                        Logger
 
 	workPool sync.Pool
 
@@ -2275,7 +2312,12 @@ func (c *pipelineConnClient) DoDeadline(req *Request, resp *Response, deadline t
 		return ErrTimeout
 	}
 
+	if c.DisablePathNormalizing {
+		req.URI().DisablePathNormalizing = true
+	}
+
 	w := acquirePipelineWork(&c.workPool, timeout)
+	w.respCopy.Header.disableNormalizing = c.DisableHeaderNamesNormalizing
 	w.req = &w.reqCopy
 	w.resp = &w.respCopy
 
@@ -2331,6 +2373,12 @@ func (c *PipelineClient) Do(req *Request, resp *Response) error {
 
 func (c *pipelineConnClient) Do(req *Request, resp *Response) error {
 	c.init()
+
+	resp.Header.disableNormalizing = c.DisableHeaderNamesNormalizing
+
+	if c.DisablePathNormalizing {
+		req.URI().DisablePathNormalizing = true
+	}
 
 	w := acquirePipelineWork(&c.workPool, 0)
 	w.req = req
@@ -2410,19 +2458,21 @@ func (c *PipelineClient) getConnClientUnlocked() *pipelineConnClient {
 
 func (c *PipelineClient) newConnClient() *pipelineConnClient {
 	cc := &pipelineConnClient{
-		Addr:                c.Addr,
-		MaxPendingRequests:  c.MaxPendingRequests,
-		MaxBatchDelay:       c.MaxBatchDelay,
-		Dial:                c.Dial,
-		DialDualStack:       c.DialDualStack,
-		IsTLS:               c.IsTLS,
-		TLSConfig:           c.TLSConfig,
-		MaxIdleConnDuration: c.MaxIdleConnDuration,
-		ReadBufferSize:      c.ReadBufferSize,
-		WriteBufferSize:     c.WriteBufferSize,
-		ReadTimeout:         c.ReadTimeout,
-		WriteTimeout:        c.WriteTimeout,
-		Logger:              c.Logger,
+		Addr:                          c.Addr,
+		MaxPendingRequests:            c.MaxPendingRequests,
+		MaxBatchDelay:                 c.MaxBatchDelay,
+		Dial:                          c.Dial,
+		DialDualStack:                 c.DialDualStack,
+		DisableHeaderNamesNormalizing: c.DisableHeaderNamesNormalizing,
+		DisablePathNormalizing:        c.DisablePathNormalizing,
+		IsTLS:                         c.IsTLS,
+		TLSConfig:                     c.TLSConfig,
+		MaxIdleConnDuration:           c.MaxIdleConnDuration,
+		ReadBufferSize:                c.ReadBufferSize,
+		WriteBufferSize:               c.WriteBufferSize,
+		ReadTimeout:                   c.ReadTimeout,
+		WriteTimeout:                  c.WriteTimeout,
+		Logger:                        c.Logger,
 	}
 	c.connClients = append(c.connClients, cc)
 	return cc
