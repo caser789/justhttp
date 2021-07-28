@@ -1250,6 +1250,33 @@ func TestResponseContentTypeNoDefaultNotEmpty(t *testing.T) {
 	}
 }
 
+func TestRequestContentTypeDefaultNotEmpty(t *testing.T) {
+	t.Parallel()
+
+	var h RequestHeader
+	h.SetMethod(MethodPost)
+	h.SetContentLength(5)
+
+	w := &bytes.Buffer{}
+	bw := bufio.NewWriter(w)
+	if err := h.Write(bw); err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+	if err := bw.Flush(); err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+
+	var h1 RequestHeader
+	br := bufio.NewReader(w)
+	if err := h1.Read(br); err != nil {
+		t.Fatalf("Unexpected error: %s", err)
+	}
+
+	if string(h1.contentType) != "application/octet-stream" {
+		t.Fatalf("unexpected Content-Type %q. Expecting %q", h1.contentType, "application/octet-stream")
+	}
+}
+
 func TestResponseDateNoDefaultNotEmpty(t *testing.T) {
 	t.Parallel()
 
