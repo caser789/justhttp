@@ -17,8 +17,62 @@ import (
 	"testing"
 	"time"
 
-	"github.com/caser789/justhttp/fasthttputil"
+	"github.com/valyala/fasthttp/fasthttputil"
 )
+
+func TestPipelineClientIssue832(t *testing.T) {
+	t.Parallel()
+
+	ln := fasthttputil.NewInmemoryListener()
+
+	req := AcquireRequest()
+	defer ReleaseRequest(req)
+	req.SetHost("example.com")
+
+	res := AcquireResponse()
+	defer ReleaseResponse(res)
+
+	client := PipelineClient{
+		Dial: func(addr string) (net.Conn, error) {
+			return ln.Dial()
+		},
+		ReadTimeout: time.Millisecond * 10,
+		Logger:      &testLogger{}, // Ignore log output.
+	}
+
+	attempts := 10
+	go func() {
+		for i := 0; i < attempts; i++ {
+			c, err := ln.Accept()
+			if err != nil {
+				t.Error(err)
+			}
+			if c != nil {
+				go func() {
+					time.Sleep(time.Millisecond * 50)
+					c.Close()
+				}()
+			}
+		}
+	}()
+
+	done := make(chan int)
+	go func() {
+		defer close(done)
+
+		for i := 0; i < attempts; i++ {
+			if err := client.Do(req, res); err == nil {
+				t.Error("error expected")
+			}
+		}
+	}()
+
+	select {
+	case <-time.After(time.Second):
+		t.Fatal("PipelineClient did not restart worker")
+	case <-done:
+	}
+}
 
 func TestClientInvalidURI(t *testing.T) {
 	t.Parallel()
@@ -1643,6 +1697,58 @@ func TestClientIdempotentRequest(t *testing.T) {
 	// non-idempotent POST must fail on incorrect singleReadConn
 	dialsCount = 0
 	_, _, err = c.Post(nil, "http://foobar/a/b", nil)
+	if err == nil {
+		t.Fatalf("expecting error")
+	}
+}
+
+func TestClientRetryRequestWithCustomDecider(t *testing.T) {
+	t.Parallel()
+
+	dialsCount := 0
+	c := &Client{
+		Dial: func(addr string) (net.Conn, error) {
+			dialsCount++
+			switch dialsCount {
+			case 1:
+				return &singleReadConn{
+					s: "invalid response",
+				}, nil
+			case 2:
+				return &writeErrorConn{}, nil
+			case 3:
+				return &readErrorConn{}, nil
+			case 4:
+				return &singleReadConn{
+					s: "HTTP/1.1 345 OK\r\nContent-Type: foobar\r\nContent-Length: 7\r\n\r\n0123456",
+				}, nil
+			default:
+				t.Fatalf("unexpected number of dials: %d", dialsCount)
+			}
+			panic("unreachable")
+		},
+		RetryIf: func(req *Request) bool {
+			return req.URI().String() == "http://foobar/a/b"
+		},
+	}
+
+	var args Args
+
+	// Post must succeed for http://foobar/a/b uri.
+	statusCode, body, err := c.Post(nil, "http://foobar/a/b", &args)
+	if err != nil {
+		t.Fatalf("unexpected error: %s", err)
+	}
+	if statusCode != 345 {
+		t.Fatalf("unexpected status code: %d. Expecting 345", statusCode)
+	}
+	if string(body) != "0123456" {
+		t.Fatalf("unexpected body: %q. Expecting %q", body, "0123456")
+	}
+
+	// POST must fail for http://foobar/a/b/c uri.
+	dialsCount = 0
+	_, _, err = c.Post(nil, "http://foobar/a/b/c", &args)
 	if err == nil {
 		t.Fatalf("expecting error")
 	}
