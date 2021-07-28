@@ -13,6 +13,8 @@ import (
 )
 
 func TestDecodeArgAppend(t *testing.T) {
+	t.Parallel()
+
 	testDecodeArgAppend(t, "", "")
 	testDecodeArgAppend(t, "foobar", "foobar")
 	testDecodeArgAppend(t, "тест", "тест")
@@ -34,6 +36,8 @@ func testDecodeArgAppend(t *testing.T, s, expectedResult string) {
 }
 
 func TestArgsAdd(t *testing.T) {
+	t.Parallel()
+
 	var a Args
 	a.Add("foo", "bar")
 	a.Add("foo", "baz")
@@ -144,6 +148,8 @@ func testArgsAcquireRelease(t *testing.T) {
 }
 
 func TestArgsPeekMulti(t *testing.T) {
+	t.Parallel()
+
 	var a Args
 	a.Parse("foo=123&bar=121&foo=321&foo=&barz=sdf")
 
@@ -170,6 +176,8 @@ func TestArgsPeekMulti(t *testing.T) {
 }
 
 func TestArgsEscape(t *testing.T) {
+	t.Parallel()
+
 	testArgsEscape(t, "foo", "bar", "foo=bar")
 
 	// Test all characters
@@ -193,6 +201,8 @@ func testArgsEscape(t *testing.T, k, v, expectedS string) {
 }
 
 func TestPathEscape(t *testing.T) {
+	t.Parallel()
+
 	testPathEscape(t, "/foo/bar")
 	testPathEscape(t, "")
 	testPathEscape(t, "/")
@@ -217,6 +227,8 @@ func testPathEscape(t *testing.T, s string) {
 }
 
 func TestArgsWriteTo(t *testing.T) {
+	t.Parallel()
+
 	s := "foo=bar&baz=123&aaa=bbb"
 
 	var a Args
@@ -237,6 +249,8 @@ func TestArgsWriteTo(t *testing.T) {
 }
 
 func TestArgsGetBool(t *testing.T) {
+	t.Parallel()
+
 	testArgsGetBool(t, "", false)
 	testArgsGetBool(t, "0", false)
 	testArgsGetBool(t, "n", false)
@@ -260,6 +274,8 @@ func testArgsGetBool(t *testing.T, value string, expectedResult bool) {
 }
 
 func TestArgsUint(t *testing.T) {
+	t.Parallel()
+
 	var a Args
 	a.SetUint("foo", 123)
 	a.SetUint("bar", 0)
@@ -293,6 +309,8 @@ func TestArgsUint(t *testing.T) {
 }
 
 func TestArgsCopyTo(t *testing.T) {
+	t.Parallel()
+
 	var a Args
 
 	// empty args
@@ -318,8 +336,8 @@ func testCopyTo(t *testing.T, a *Args) {
 	var b Args
 	a.CopyTo(&b)
 
-	if !reflect.DeepEqual(*a, b) {
-		t.Fatalf("ArgsCopyTo fail, a: \n%+v\nb: \n%+v\n", *a, b)
+	if !reflect.DeepEqual(*a, b) { //nolint
+		t.Fatalf("ArgsCopyTo fail, a: \n%+v\nb: \n%+v\n", *a, b) //nolint
 	}
 
 	b.VisitAll(func(k, v []byte) {
@@ -334,6 +352,8 @@ func testCopyTo(t *testing.T, a *Args) {
 }
 
 func TestArgsVisitAll(t *testing.T) {
+	t.Parallel()
+
 	var a Args
 	a.Set("foo", "bar")
 
@@ -353,6 +373,8 @@ func TestArgsVisitAll(t *testing.T) {
 }
 
 func TestArgsStringCompose(t *testing.T) {
+	t.Parallel()
+
 	var a Args
 	a.Set("foo", "bar")
 	a.Set("aa", "bbb")
@@ -370,6 +392,8 @@ func TestArgsStringCompose(t *testing.T) {
 }
 
 func TestArgsString(t *testing.T) {
+	t.Parallel()
+
 	var a Args
 
 	testArgsString(t, &a, "")
@@ -390,6 +414,8 @@ func testArgsString(t *testing.T, a *Args, s string) {
 }
 
 func TestArgsSetGetDel(t *testing.T) {
+	t.Parallel()
+
 	var a Args
 
 	if len(a.Peek("foo")) > 0 {
@@ -424,7 +450,7 @@ func TestArgsSetGetDel(t *testing.T) {
 
 	a.Parse("aaa=xxx&bb=aa")
 	if string(a.Peek("foo0")) != "" {
-		t.Fatalf("Unepxected value %q", a.Peek("foo0"))
+		t.Fatalf("Unexpected value %q", a.Peek("foo0"))
 	}
 	if string(a.Peek("aaa")) != "xxx" {
 		t.Fatalf("Unexpected value %q. Expected %q", a.Peek("aaa"), "xxx")
@@ -455,6 +481,8 @@ func TestArgsSetGetDel(t *testing.T) {
 }
 
 func TestArgsParse(t *testing.T) {
+	t.Parallel()
+
 	var a Args
 
 	// empty args
@@ -501,6 +529,8 @@ func TestArgsParse(t *testing.T) {
 }
 
 func TestArgsHas(t *testing.T) {
+	t.Parallel()
+
 	var a Args
 
 	// single arg
@@ -551,5 +581,19 @@ func testArgsParse(t *testing.T, a *Args, s string, expectedLen int, expectedArg
 		if string(buf) != v {
 			t.Fatalf("Unexpected value for key=%q: %q. Expected %q. s=%q", k, buf, v, s)
 		}
+	}
+}
+
+func TestArgsDeleteAll(t *testing.T) {
+	t.Parallel()
+	var a Args
+	a.Add("q1", "foo")
+	a.Add("q1", "bar")
+	a.Add("q1", "baz")
+	a.Add("q1", "quux")
+	a.Add("q2", "1234")
+	a.Del("q1")
+	if a.Len() != 1 || a.Has("q1") {
+		t.Fatalf("Expected q1 arg to be completely deleted. Current Args: %s", a.String())
 	}
 }
