@@ -112,7 +112,7 @@ func TestClientURLAuth(t *testing.T) {
 	for up, expected := range cases {
 		req := AcquireRequest()
 		req.Header.SetMethod(MethodGet)
-		req.SetRequestURI("http://" + up + "example.com")
+		req.SetRequestURI("http://" + up + "example.com/foo/bar")
 		if err := c.Do(req, nil); err != nil {
 			t.Fatal(err)
 		}
@@ -2323,6 +2323,10 @@ func TestHostClientMaxConnWaitTimeoutError(t *testing.T) {
 		}()
 	}
 	wg.Wait()
+
+	// Prevent a race condition with the conns cleaner that might still be running.
+	c.connsLock.Lock()
+	defer c.connsLock.Unlock()
 
 	if c.connsWait.len() > 0 {
 		t.Errorf("connsWait has %v items remaining", c.connsWait.len())

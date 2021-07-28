@@ -1841,8 +1841,8 @@ func dialAddr(addr string, dial DialFunc, dialDualStack, isTLS bool, tlsConfig *
 	if conn == nil {
 		panic("BUG: DialFunc returned (nil, nil)")
 	}
-	_, isTSLAlready := conn.(*tls.Conn)
-	if isTLS && !isTSLAlready {
+	_, isTLSAlready := conn.(*tls.Conn)
+	if isTLS && !isTLSAlready {
 		if timeout == 0 {
 			return tls.Client(conn, tlsConfig), nil
 		}
