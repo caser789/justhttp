@@ -8,10 +8,10 @@ os:
   - windows
 go:
   - tip
+  - 1.15.x
   - 1.14.x
   - 1.13.x
   - 1.12.x
-  - 1.11.x
 
 script:
   - go test -v ./...
@@ -31,7 +31,7 @@ jobs:
       os:
         - linux
       go:
-        - 1.14.x
+        - 1.15.x
       script:
         - GOOS=linux go build
         - GOOS=darwin go build
@@ -42,7 +42,7 @@ jobs:
       os:
         - osx
       go:
-        - 1.14.x
+        - 1.15.x
       script:
         - GOOS=linux go build
         - GOOS=darwin go build
@@ -53,13 +53,13 @@ jobs:
       os:
         - linux
       go:
-        - 1.14.x
+        - 1.15.x
       script:
         - go test -race -v ./...
     - stage: race detector
       os:
         - osx
       go:
-        - 1.14.x
+        - 1.15.x
       script:
         - go test -race -v ./...
