@@ -394,20 +394,20 @@ func gunzipData(p []byte) ([]byte, error) {
 	return bb.B, nil
 }
 
-// BodyUnbrotli returns un-gzipped body data.
+// BodyUnbrotli returns un-brotlied body data.
 //
 // This method may be used if the request header contains
-// 'Content-Encoding: gzip' for reading un-gzipped body.
-// Use Body for reading gzipped request body.
+// 'Content-Encoding: br' for reading un-brotlied body.
+// Use Body for reading brotlied request body.
 func (req *Request) BodyUnbrotli() ([]byte, error) {
 	return unBrotliData(req.Body())
 }
 
-// BodyUnbrotli returns un-gzipped body data.
+// BodyUnbrotli returns un-brotlied body data.
 //
 // This method may be used if the response header contains
-// 'Content-Encoding: gzip' for reading un-gzipped body.
-// Use Body for reading gzipped response body.
+// 'Content-Encoding: br' for reading un-brotlied body.
+// Use Body for reading brotlied response body.
 func (resp *Response) BodyUnbrotli() ([]byte, error) {
 	return unBrotliData(resp.Body())
 }
@@ -477,7 +477,8 @@ func (resp *Response) BodyWriteTo(w io.Writer) error {
 //
 // It is safe re-using p after the function returns.
 func (resp *Response) AppendBody(p []byte) {
-	resp.AppendBodyString(b2s(p))
+	resp.closeBodyStream()     //nolint:errcheck
+	resp.bodyBuffer().Write(p) //nolint:errcheck
 }
 
 // AppendBodyString appends s to response body.
@@ -490,7 +491,10 @@ func (resp *Response) AppendBodyString(s string) {
 //
 // It is safe re-using body argument after the function returns.
 func (resp *Response) SetBody(body []byte) {
-	resp.SetBodyString(b2s(body))
+	resp.closeBodyStream() //nolint:errcheck
+	bodyBuf := resp.bodyBuffer()
+	bodyBuf.Reset()
+	bodyBuf.Write(body) //nolint:errcheck
 }
 
 // SetBodyString sets response body.
@@ -626,7 +630,9 @@ func (req *Request) Body() []byte {
 //
 // It is safe re-using p after the function returns.
 func (req *Request) AppendBody(p []byte) {
-	req.AppendBodyString(b2s(p))
+	req.RemoveMultipartFormFiles()
+	req.closeBodyStream()     //nolint:errcheck
+	req.bodyBuffer().Write(p) //nolint:errcheck
 }
 
 // AppendBodyString appends s to request body.
@@ -640,7 +646,9 @@ func (req *Request) AppendBodyString(s string) {
 //
 // It is safe re-using body argument after the function returns.
 func (req *Request) SetBody(body []byte) {
-	req.SetBodyString(b2s(body))
+	req.RemoveMultipartFormFiles()
+	req.closeBodyStream() //nolint:errcheck
+	req.bodyBuffer().Set(body)
 }
 
 // SetBodyString sets request body.
@@ -725,7 +733,7 @@ func swapResponseBody(a, b *Response) {
 
 // URI returns request URI
 func (req *Request) URI() *URI {
-	req.parseURI()
+	req.parseURI() //nolint:errcheck
 	return &req.uri
 }
 
